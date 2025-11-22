@@ -1,5 +1,5 @@
 from PyQt6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -9,11 +9,19 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
+        
+        # Show loading message initially
+        self.loading_label = QLabel("Chargement des modules...", self)
+        self.loading_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.tabs.addTab(self.loading_label, "Chargement...")
+        
+        # Delay tab loading to let the window show up first
+        QTimer.singleShot(100, self.load_tabs)
 
-        # Initialize Tabs
-        self.create_tabs()
-
-    def create_tabs(self):
+    def load_tabs(self):
+        # Clear loading tab
+        self.tabs.clear()
+        
         # 1. Inventaire
         from ui.inventory_widget import InventoryWidget
         self.inventory_tab = InventoryWidget()
