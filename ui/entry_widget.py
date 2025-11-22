@@ -1,6 +1,6 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QInputDialog, QStyle, QFileDialog
+    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QInputDialog, QStyle, QFileDialog, QComboBox
 )
 from PyQt6.QtCore import Qt, QTimer, QEvent
 from database.connection import get_db
@@ -17,6 +17,7 @@ class EntryWidget(QWidget):
         super().__init__()
         self.current_supply_list = None
         self.init_ui()
+        self.load_draft_lists() # Load drafts on init
         self.search_timer = QTimer()
         self.search_timer.setSingleShot(True)
         self.search_timer.timeout.connect(self.perform_search)
@@ -26,8 +27,23 @@ class EntryWidget(QWidget):
 
         # Top: Create/Select List
         list_layout = QHBoxLayout()
+        
+        # Draft Selection
+        self.draft_combo = QComboBox()
+        self.draft_combo.setPlaceholderText("Reprendre un brouillon...")
+        self.draft_combo.setMinimumWidth(200)
+        self.draft_combo.currentIndexChanged.connect(self.on_draft_selected)
+        list_layout.addWidget(self.draft_combo)
+        
+        # Delete List Button
+        self.delete_list_btn = QPushButton()
+        self.delete_list_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+        self.delete_list_btn.setToolTip("Supprimer le brouillon sélectionné")
+        self.delete_list_btn.clicked.connect(self.delete_current_list)
+        list_layout.addWidget(self.delete_list_btn)
+        
         self.list_title_input = QLineEdit()
-        self.list_title_input.setPlaceholderText("Titre de la liste d'approvisionnement")
+        self.list_title_input.setPlaceholderText("Titre de la nouvelle liste")
         create_btn = QPushButton("Créer Liste")
         create_btn.clicked.connect(self.create_list)
         list_layout.addWidget(self.list_title_input)
@@ -99,7 +115,6 @@ class EntryWidget(QWidget):
                         if self.results_table.currentRow() == -1:
                             self.results_table.selectRow(0)
                         return True
-            
             elif source == self.results_table:
                 if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                     if self.results_table.currentRow() != -1:
@@ -113,6 +128,36 @@ class EntryWidget(QWidget):
                         return True
                         
         return super().eventFilter(source, event)
+
+    def load_draft_lists(self):
+        self.draft_combo.blockSignals(True)
+        self.draft_combo.clear()
+        self.draft_combo.addItem("Sélectionner un brouillon...", None)
+        
+        db = next(get_db())
+        # Fetch lists with status 'draft' or None
+        drafts = db.query(SupplyList).filter((SupplyList.status == 'draft') | (SupplyList.status == None)).order_by(SupplyList.created_at.desc()).all()
+        
+        for d in drafts:
+            self.draft_combo.addItem(f"{d.title} ({d.created_at.strftime('%d/%m %H:%M')})", d.id)
+            
+        self.draft_combo.blockSignals(False)
+
+    def on_draft_selected(self, index):
+        if index <= 0:
+            return
+            
+        list_id = self.draft_combo.currentData()
+        if not list_id:
+            return
+            
+        db = next(get_db())
+        self.current_supply_list = db.query(SupplyList).get(list_id)
+        
+        if self.current_supply_list:
+            self.refresh_supply_table()
+            # Update title input just for visual confirmation, but it's for new lists usually
+            self.list_title_input.setText(self.current_supply_list.title)
 
     def create_list(self):
         title = self.list_title_input.text().strip()
@@ -128,6 +173,38 @@ class EntryWidget(QWidget):
         self.current_list_label.setText(f"Liste active: {title} (BROUILLON)")
         self.list_title_input.clear()
         self.refresh_supply_table()
+        self.load_draft_lists() # Refresh combo
+
+    def delete_current_list(self):
+        if not self.current_supply_list:
+            QMessageBox.warning(self, "Attention", "Aucune liste sélectionnée.")
+            return
+
+        reply = QMessageBox.question(
+            self, "Confirmer la suppression",
+            f"Voulez-vous vraiment supprimer la liste '{self.current_supply_list.title}' et tout son contenu ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+
+        if reply == QMessageBox.StandardButton.Yes:
+            try:
+                db = next(get_db())
+                # Re-fetch to ensure attached to session
+                lst = db.query(SupplyList).get(self.current_supply_list.id)
+                if lst:
+                    # Delete items first
+                    db.query(SupplyListItem).filter(SupplyListItem.supply_list_id == lst.id).delete()
+                    db.delete(lst)
+                    db.commit()
+                    
+                    self.current_supply_list = None
+                    self.current_list_label.setText("Aucune liste active")
+                    self.list_title_input.clear()
+                    self.supply_table.setRowCount(0)
+                    self.load_draft_lists() # Refresh combo
+                    QMessageBox.information(self, "Succès", "Liste supprimée avec succès.")
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression: {e}")
 
     def on_search_text_changed(self):
         self.search_timer.start(300)
@@ -342,6 +419,7 @@ class EntryWidget(QWidget):
             self.current_supply_list.status = 'closed'
             db.commit()
             self.refresh_supply_table()
+            self.load_draft_lists() # Refresh combo
             QMessageBox.information(self, "Succès", "Liste clôturée. Elle est maintenant disponible pour validation.")
 
     def export_to_excel(self):
@@ -360,24 +438,56 @@ class EntryWidget(QWidget):
         # Prepare data
         data = []
         for item in items:
+            # Format Date as MM-YY
+            date1 = item.expiry_date_1.strftime('%m-%y') if item.expiry_date_1 else ""
+            date2 = item.expiry_date_2.strftime('%m-%y') if item.expiry_date_2 else ""
+            
+            # Truncate Product Name (Max ~40 chars for width 40.71)
+            product_name = item.designation_1
+            if product_name and len(product_name) > 40:
+                product_name = product_name[:37] + "..."
+
             data.append({
-                "Désignation": item.designation_1,
-                "Code Barre 1": item.barcode_1,
-                "Emplacement 1": item.location_1,
-                "Date Exp 1": item.expiry_date_1,
-                "Code Barre 2": item.barcode_2,
-                "Emplacement 2": item.location_2,
-                "Date Exp 2": item.expiry_date_2,
-                "Quantité": item.quantity
+                "Observ.1": item.barcode_1,
+                "Empl.1": item.location_1,
+                "Date.1": date1,
+                "Qtt": item.quantity,
+                "Produit": product_name,
+                "Date.2": date2,
+                "Empl.2": item.location_2,
+                "Observ.2": item.barcode_2
             })
             
         df = pd.DataFrame(data)
+        
+        # Reorder columns to ensure exact match
+        columns_order = ['Observ.1', 'Empl.1', 'Date.1', 'Qtt', 'Produit', 'Date.2', 'Empl.2', 'Observ.2']
+        df = df[columns_order]
         
         # Save Dialog
         filename, _ = QFileDialog.getSaveFileName(self, "Exporter Excel", f"Liste_{self.current_supply_list.title}.xlsx", "Excel Files (*.xlsx)")
         if filename:
             try:
+                # Save using Pandas first
                 df.to_excel(filename, index=False)
+                
+                # Open with openpyxl to apply styles
+                import openpyxl
+                wb = openpyxl.load_workbook(filename)
+                ws = wb.active
+                
+                # Apply Column Widths
+                ws.column_dimensions['A'].width = 8.71
+                ws.column_dimensions['B'].width = 7.71
+                ws.column_dimensions['C'].width = 8.71
+                ws.column_dimensions['D'].width = 7.71
+                ws.column_dimensions['E'].width = 40.71
+                ws.column_dimensions['F'].width = 8.71
+                ws.column_dimensions['G'].width = 7.71
+                ws.column_dimensions['H'].width = 8.71
+                
+                wb.save(filename)
+                
                 QMessageBox.information(self, "Succès", f"Liste exportée vers {filename}")
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de l'export: {e}")
