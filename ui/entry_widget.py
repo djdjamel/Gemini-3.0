@@ -65,10 +65,15 @@ class EntryWidget(QWidget):
         self.results_table = QTableWidget()
         self.results_table.setColumnCount(4)
         self.results_table.setHorizontalHeaderLabels(["Désignation", "Code", "Emplacement", "Date Exp"])
-        self.results_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        r_header = self.results_table.horizontalHeader()
+        r_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for i in [1, 2, 3]:
+            r_header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
+            
         self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.results_table.doubleClicked.connect(self.add_to_supply_list)
+        self.results_table.verticalHeader().setDefaultSectionSize(48)
         
         # Install Event Filters for Navigation
         self.search_input.installEventFilter(self)
@@ -81,9 +86,13 @@ class EntryWidget(QWidget):
         self.supply_table = QTableWidget()
         self.supply_table.setColumnCount(9)
         self.supply_table.setHorizontalHeaderLabels(["Désignation", "Code Barre 1", "Emplacement 1", "Date Exp 1", "Code Barre 2", "Emplacement 2", "Date Exp 2", "Quantité", "Actions"])
-        self.supply_table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        s_header = self.supply_table.horizontalHeader()
+        s_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        for i in range(1, 9):
+            s_header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         self.supply_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.supply_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.supply_table.verticalHeader().setDefaultSectionSize(48)
         layout.addWidget(QLabel("Contenu de la liste:"))
         layout.addWidget(self.supply_table)
 
@@ -343,6 +352,7 @@ class EntryWidget(QWidget):
                 # Treat None as draft for legacy lists
                 if self.current_supply_list.status == 'draft' or self.current_supply_list.status is None:
                     del_btn = QPushButton()
+                    del_btn.setObjectName("TableActionBtn") # For styling
                     del_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
                     del_btn.setToolTip("Supprimer")
                     del_btn.clicked.connect(lambda checked, i_id=item.id: self.delete_item(i_id))

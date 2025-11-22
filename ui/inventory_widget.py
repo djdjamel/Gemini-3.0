@@ -60,11 +60,16 @@ class InventoryWidget(QWidget):
         # Removed 'Code' column, now 4 columns
         self.table.setColumnCount(4)
         self.table.setHorizontalHeaderLabels(["Désignation", "Date Exp", "Code Barre", "Actions"])
-        self.table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header = self.table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         
         # Make table read-only
         self.table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.table.verticalHeader().setDefaultSectionSize(48)
         
         layout.addWidget(self.table)
 
@@ -187,16 +192,12 @@ class InventoryWidget(QWidget):
             actions_widget = QWidget()
             actions_layout = QHBoxLayout()
             actions_layout.setContentsMargins(0, 0, 0, 0)
-            actions_layout.setSpacing(5)
+            actions_layout.setSpacing(4)
+            actions_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
             
-            # Move Button - Changed Icon to SP_FileDialogDetailedView (List icon) or SP_DirIcon
-            # Let's use SP_ArrowForward or something distinct if ArrowRight wasn't good.
-            # User said "l'icon dédié à déplacer ne me plait pas".
-            # Let's try SP_CommandLink (Arrow) or SP_ToolBarHorizontalExtensionButton
-            # Or maybe SP_DialogYesButton (Check)? No.
-            # Let's try SP_DirIcon (Folder) -> Move to folder?
-            # Let's try SP_FileDialogListView.
+            # Move Button
             move_btn = QPushButton()
+            move_btn.setObjectName("TableActionBtn")
             move_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogListView))
             move_btn.setToolTip("Déplacer")
             move_btn.clicked.connect(lambda checked, p=prod: self.move_product(p))
@@ -204,6 +205,7 @@ class InventoryWidget(QWidget):
             
             # Delete Button
             del_btn = QPushButton()
+            del_btn.setObjectName("TableActionBtn")
             del_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
             del_btn.setToolTip("Supprimer")
             del_btn.clicked.connect(lambda checked, p_id=prod.id: self.delete_product(p_id))

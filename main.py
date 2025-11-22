@@ -14,8 +14,9 @@ def main():
     # Start UI
     app = QApplication(sys.argv)
     
-    # Apply a clean style
-    app.setStyle("Fusion")
+    # Apply Modern Stylesheet
+    from ui.styles import get_stylesheet
+    app.setStyleSheet(get_stylesheet())
 
     # Splash Screen
     from PyQt6.QtGui import QFont
