@@ -1,0 +1,71 @@
+J'ai un projet de gestionnaire de stock et d'emplacements des produits.
+le projet utilise une source de données sql server d'un autre logiciel tiers (xpertPharm) pour alimenter sa base de données locale postgres.
+on a plusieurs fenetres dans notre application:
+1. inventaire: 
+	permet de saisir un code à barre dans une zone de texte, puis on lance une requete à la base de données xpertPharm pour récupérer les données du produits : désignation, code, date d'expiration,...
+	les données récupéré servent à créer le produit dans la liste des produits (nomenclature) s'il n'existe pas déjà puis à enregistrer dans une table produit_emplacement : code + code barre + date d'expiration + code emplacement dans le stock.
+	les emplacements sont des colonnes de A à Z avec des étages de 1 à 8 ce qui nous donne des positions du genre A1, A2,..
+	donc la table emplacement contient au moins deux colonnes: id, libellé (ex: A1, A2,...)
+	Avant la saisie de code barre produit dans la zone de texte, l'utilisateur saisie le code barre de l'emplacement, ce qui fait sélectionner l'emplacement en attendant que le code barre produit soit saisie (scané) aussi pour classer le produit.
+	Il n'y a qu'une seule zone de texte qui est commune pour la saisie de code barre emplacement et le code barre produit, à coté d'elle une liste déroulante qui contient les emplacements.
+	Il y a une liste qui affiche le contenu de l'emplacement actuel (liste des produits dans cet emplacement) et qui permet aussi de supprimer un produit ou de le déplacer vers un autre emplacement.
+	Le code barre des emplacements est un systeme simple de la forme 000XXYY ou XX est la représentation de la partie lettre de l'emplacement dans la table ascii moins 64, YY et la partie numérie de l'emplacement. example: 0000105 donne A5, 0001103 donne K3.
+	On a 4 colonnes supplémentaires qui sont DD, II, JJ, KK avec des étages de 1 à 8 et donc leur XX dans le systeme 000XXYY sera 27, 28, 29, 30 respectivemet.
+	la table emplacement contient 3 colonnes: id, label, barcode qui sont remplis lors de l'intialisation de la base de données la première fois par l'application.
+	Quand l'utlisateur scan ou saisie un code barre qui commence par 000, là on sait directement qu'il s'agit de code barre emplacement et on lance une requete à la table emplacement pour savoir quel emplacement il s'agit puis la liste déroulante est mis à jour automqtiquement pour choisir cet emplacement.
+	Si un code barre produit est scanné est que le systeme a bien récupéré ses données il sera ajouter automqtiquement à la liste s'il passe les règles de controle
+	permet de donner des avertissements en cas (règles de controle):
+		- si on essaie d'ajouter un produit à un emplacement ou il existe déjà (meme code produit)
+		- si on essaie d'ajouter un meme code à barre à un emplacement ou il existe déjà (meme code barre = meme lot)
+		- Si le code barre n'est pas reconnu
+
+2. Recherche:
+	permet de recherche l'emplacement d'un produit. En tapant le nom d'un produit (ou une partie du nom) la liste qui affiche les produits avec le meme texte et leur emplacement se mis à jour. cette liste permet aussi de supprimer un produit ou de changer son emplacement.
+	
+3. Colis:
+	la saisie d'un code à barre dans une zone de texte permet d'ajouter le produit à la liste d'impression.
+	cette liste sert à impimer des cartes (Labels) pour colis qui contient : Désignation, date d'expiration, code barre, date d'impression.
+	
+4. Manquant:
+	quand un produit est épuisé du stock il doit etre mentienné dans cette liste par son code et date d'épuisement
+5. Paramètres:
+	paramètres de connexion à la base de données de xpertPharm.
+	paramètres de connexion à la base de données de  Postgres de l'application.
+	paramètres de l'impression
+6. Saisie:
+	permet de créer une liste d'approvisionnement des produits de stock, voici le workflow:
+	- l'utilisateur clique un bouton '+ liste' pour créer une nouvelle liste.
+	- il y a une zone de recherche qui permet de rechercher un produit par son designation.
+	- il y une liste des résultat qui change de contenu chaque fois que l'utilisateur change le contenue de la zone de recherche (avec un temps pour debouncing), cette liste affiche les produits par ordre de simularité puis pat ordre croissant de date de péremption puis par ordre croissant de Id d'emplacement.
+	- quand l'utilisateur double clique un element de la liste il est ajouté à la liste d'approvisionnement (crée) ; c'est une liste en dessou ou à coté de la liste de résultat. cette liste contient les colonnes suivantes: designation , emplacement 1, code barre 1, date expiration 1, emplacement 2, code barre 2, date expiration 2.
+	  emplacement 1, code barre 1, date expiration 1 représentent l'élement double clické par l'utilisateur dans la liste des résultats. emplacement 2, code barre 2, date expiration 2 représente l'élement suivant dans la liste des résultats qui se trouve en dessous de l'élément que l'utilisateur a double cliqué et qui porte la meme designation (s'il y en a).
+	- une fois que l'utilisateur a terminé la saisie des produits, il doit enregistrer sa liste d'approvisionnement (le systeme lui donne un titre automatiquement qui est "liste + date et heure actuel") pour qu'il puisse l'accéder ultirieurement.
+7. Validation:
+	permet de valider une liste d'approvisionnement précédement crée. voici le workflow:
+	- l'utilisateur choisit une liste de la liste des listes d'approvisionnement qui sont classées par ordre décroissant (la plus récente en haut) et clique ouvrir.
+	- une autre liste en dessous affiche les produits de la liste sélectionnée (de l'emplacement 1 et 2 dans la meme liste). elle a comme colonnes: emplacement , code barre , date expiration , resultat. (si le produit s'agit d'un produits d'emplacement 2 et il doit etre coloré avec une autre couleur)
+	- resultat est une colonne à champs éditables qui a par defaut la valeur "V". les autres valeurs possibles (que l'utilisateur tape) sont:
+		* "S" ou "X" pour supprimer le produit en question (code à barre)
+		* un emplacement: veut dire que le produit (code à barre) doit etre déplacé vers un ce nouveau emplacement
+	- une fois terminé avec l'édition de la colonne résultat, l'utilisateur clique sur valider pour que le systeme commence à appliquer ce qui existe dans le champs résultat  de chaque ligne sur le produit (code à barre) correspondant.
+	- dans la liste des listes d'approvisionnement, la liste déjà validée doit avoir une mention ou un badge qui montre sa validation
+   
+l'architecture du projet et le code doivent suivre les bonnes pratiques
+D'autres fonctionnalités attendues dans l'application après avoir terminer avec l'essentiel:
+- Veille sur la date de péremption des produits (< 6mois).
+- messagerie en temps réel entre les différents pc où l'application est installée (avec notification).
+- signaler les produits dormants (qui ont plus de 2 mois sans mouvement).
+- en mode inventaire, permettre nettoyer un emplacement des produits qui y existe plus et d'y ajouter de nouveaux.
+- journal d'activité (saisie des codes à barres, recherche des produits,..).
+
+quelques détails téchniques:
+1. language à utiliser: python
+2. Application desktop
+3. Imprimante pour A4 ( peut contenir 4 étiquettes )
+4. la seule synchro nécessaire entre les deux base de données local (postgres) et xpertPharm (sql server) est celle qu'on fait quand on scan un produit pour récupérer les info du produit via son code barre puis voir si le produit existe en local (Postgres) sinon l'ajouter puis l'insérer dans produit_emplacement
+5. deux niveaux d'utilisateur: Admin, agent
+
+voici une requete qui donne accès au stock du xpertpharm:
+	select ST.[ID_STOCK] ID_STOCK,ST.[CODE_PRODUIT] CODE_PRODUIT,ST.[QUANTITE]  QUANTITE ,ST.[LOT] LOT ,ST.[DATE_PEREMPTION] expiry_date ,ST.[CODE_BARRE_LOT] barcode ,ST.[CREATED_ON] CREATED_ON  ,[XPERTPHARM5_7091_BOURENANE].dbo.GET_DESIGNATION_PRODUIT(p.DESIGNATION, p.DOSAGE, p.UNITE, p.CONDIT, f.DESIGNATION) AS designation  FROM [XPERTPHARM5_7091_BOURENANE].[dbo].[STK_STOCK] ST  INNER JOIN [XPERTPHARM5_7091_BOURENANE].[dbo].[STK_PRODUITS] p ON ST.CODE_PRODUIT = p.CODE_PRODUIT  LEFT JOIN [XPERTPHARM5_7091_BOURENANE].[dbo].[BSE_PRODUIT_FORMES] f ON f.CODE=p.CODE_FORME WHERE barcode = ?
+
+6. code barre utilisé est le code 128.

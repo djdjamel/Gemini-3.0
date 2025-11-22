@@ -1,0 +1,10 @@
+PyQt6
+SQLAlchemy
+psycopg2-binary
+pyodbc
+python-barcode
+reportlab
+python-dotenv
+pyttsx3
+pandas
+openpyxl
