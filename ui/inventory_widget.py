@@ -1,17 +1,17 @@
 from PyQt6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QComboBox, 
-    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QAbstractItemView, QDialog
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
+    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QComboBox, QCheckBox, QAbstractItemView, QDialog, QStyle
 )
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QIcon
-from PyQt6.QtWidgets import QStyle
 from database.connection import get_db, get_product_from_xpertpharm
-from database.models import Location, Product
+from database.models import Location, Product, Nomenclature
 from utils.barcode_utils import is_location_barcode, parse_location_barcode
 from ui.dialogs import ChangeLocationDialog
 from sqlalchemy.orm import Session
 import logging
 import pyttsx3
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -156,11 +156,25 @@ class InventoryWidget(QWidget):
             self.show_error("Erreur", "Code à barre non reconu.")
             return
 
+        # Create/Update Nomenclature
+        nomenclature = db.query(Nomenclature).filter(Nomenclature.code == product_data['CODE_PRODUIT']).first()
+        if not nomenclature:
+            nomenclature = Nomenclature(
+                code=product_data['CODE_PRODUIT'],
+                designation=product_data['designation'],
+                last_edit_date=datetime.now(),
+                last_supply_date=datetime.now()
+            )
+            db.add(nomenclature)
+        else:
+            # Update designation if changed (optional, but good practice)
+            nomenclature.designation = product_data['designation']
+            nomenclature.last_edit_date = datetime.now()
+        
         # Create Product
         new_product = Product(
             code=product_data['CODE_PRODUIT'],
             barcode=barcode,
-            designation=product_data['designation'],
             expiry_date=product_data['expiry_date'],
             location_id=self.current_location.id
         )
@@ -179,12 +193,13 @@ class InventoryWidget(QWidget):
             return
 
         db = next(get_db())
-        products = db.query(Product).filter(Product.location_id == self.current_location.id).all()
+        products = db.query(Product).join(Nomenclature).filter(Product.location_id == self.current_location.id).all()
         
         self.table.setRowCount(len(products))
         for row, prod in enumerate(products):
+            designation = prod.nomenclature.designation if prod.nomenclature else "Unknown"
             # Removed Code column (index 0)
-            self.table.setItem(row, 0, QTableWidgetItem(prod.designation))
+            self.table.setItem(row, 0, QTableWidgetItem(designation))
             self.table.setItem(row, 1, QTableWidgetItem(str(prod.expiry_date)))
             self.table.setItem(row, 2, QTableWidgetItem(prod.barcode))
             
@@ -220,6 +235,10 @@ class InventoryWidget(QWidget):
             db = next(get_db())
             prod = db.query(Product).filter(Product.id == product_id).first()
             if prod:
+                # Update Nomenclature last_edit_date
+                if prod.nomenclature:
+                    prod.nomenclature.last_edit_date = datetime.now()
+                
                 db.delete(prod)
                 db.commit()
                 self.load_products()
@@ -233,5 +252,10 @@ class InventoryWidget(QWidget):
                 prod_db = db.query(Product).filter(Product.id == product.id).first()
                 if prod_db:
                     prod_db.location_id = new_loc_id
+                    
+                    # Update Nomenclature last_edit_date
+                    if prod_db.nomenclature:
+                        prod_db.nomenclature.last_edit_date = datetime.now()
+                        
                     db.commit()
                     self.load_products() # Refresh

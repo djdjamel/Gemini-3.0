@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer, QEvent
 from database.connection import get_db
-from database.models import Product, SupplyList, SupplyListItem
+from database.models import Product, SupplyList, SupplyListItem, Nomenclature
 from sqlalchemy.orm import joinedload
 import logging
 import pandas as pd
@@ -73,7 +73,7 @@ class EntryWidget(QWidget):
         self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.results_table.doubleClicked.connect(self.add_to_supply_list)
-        self.results_table.verticalHeader().setDefaultSectionSize(48)
+        self.results_table.verticalHeader().setDefaultSectionSize(60)
         
         # Install Event Filters for Navigation
         self.search_input.installEventFilter(self)
@@ -92,7 +92,7 @@ class EntryWidget(QWidget):
             s_header.setSectionResizeMode(i, QHeaderView.ResizeMode.ResizeToContents)
         self.supply_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.supply_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self.supply_table.verticalHeader().setDefaultSectionSize(48)
+        self.supply_table.verticalHeader().setDefaultSectionSize(60)
         layout.addWidget(QLabel("Contenu de la liste:"))
         layout.addWidget(self.supply_table)
 
@@ -226,13 +226,14 @@ class EntryWidget(QWidget):
             return
 
         db = next(get_db())
-        products = db.query(Product).options(joinedload(Product.location)).filter(Product.designation.ilike(f"%{query_text}%")).all()
+        products = db.query(Product).join(Nomenclature).options(joinedload(Product.location), joinedload(Product.nomenclature)).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
         
         self.results_table.setRowCount(len(products))
         for row, prod in enumerate(products):
             loc_label = prod.location.label if prod.location else "N/A"
+            designation = prod.nomenclature.designation if prod.nomenclature else "Unknown"
             
-            item_desig = QTableWidgetItem(prod.designation)
+            item_desig = QTableWidgetItem(designation)
             item_desig.setData(Qt.ItemDataRole.UserRole, prod) # Store object
             
             self.results_table.setItem(row, 0, item_desig)
@@ -260,12 +261,14 @@ class EntryWidget(QWidget):
             SupplyListItem.product_code_1 == item1.code
         ).first()
         
+        item1_designation = item1.nomenclature.designation if item1.nomenclature else "Unknown"
+
         if existing_item:
-             QMessageBox.warning(self, "Doublon", f"Le produit '{item1.designation}' est déjà dans la liste.")
+             QMessageBox.warning(self, "Doublon", f"Le produit '{item1_designation}' est déjà dans la liste.")
              return False
 
         # Ask for Quantity
-        qty, ok = QInputDialog.getInt(self, "Quantité", f"Quantité pour {item1.designation}:", 1, 1, 10000)
+        qty, ok = QInputDialog.getInt(self, "Quantité", f"Quantité pour {item1_designation}:", 1, 1, 10000)
         if not ok:
             return False
 
@@ -273,7 +276,8 @@ class EntryWidget(QWidget):
         item2 = None
         if row + 1 < self.results_table.rowCount():
             next_item = self.results_table.item(row + 1, 0).data(Qt.ItemDataRole.UserRole)
-            if next_item.designation == item1.designation:
+            next_item_designation = next_item.nomenclature.designation if next_item.nomenclature else "Unknown"
+            if next_item_designation == item1_designation:
                 item2 = next_item
 
         # Add to DB
@@ -286,16 +290,18 @@ class EntryWidget(QWidget):
         loc1 = item1.location.label if item1.location else ""
         loc2 = item2.location.label if item2 and item2.location else ""
         
+        item2_designation = item2.nomenclature.designation if item2 and item2.nomenclature else None
+
         list_item = SupplyListItem(
             supply_list_id=self.current_supply_list.id,
             product_code_1=item1.code,
-            designation_1=item1.designation,
+            designation_1=item1_designation,
             location_1=loc1,
             barcode_1=item1.barcode,
             expiry_date_1=item1.expiry_date,
             
             product_code_2=item2.code if item2 else None,
-            designation_2=item2.designation if item2 else None,
+            designation_2=item2_designation,
             location_2=loc2 if item2 else None,
             barcode_2=item2.barcode if item2 else None,
             expiry_date_2=item2.expiry_date if item2 else None,
@@ -303,12 +309,18 @@ class EntryWidget(QWidget):
             quantity=qty
         )
         
+        # Update last_supply_date on Nomenclature - MOVED TO CLOSE_LIST
+        # if item1.nomenclature:
+        #     item1.nomenclature.last_supply_date = datetime.now()
+        # if item2 and item2.nomenclature:
+        #     item2.nomenclature.last_supply_date = datetime.now()
+            
         db.add(list_item)
         db.commit()
         
         self.refresh_supply_table()
         return True
-
+            
     def refresh_supply_table(self):
         self.supply_table.setRowCount(0)
         if not self.current_supply_list:
@@ -427,6 +439,21 @@ class EntryWidget(QWidget):
             db = next(get_db())
             self.current_supply_list = db.merge(self.current_supply_list)
             self.current_supply_list.status = 'closed'
+            
+            # Update last_supply_date for all items in the list
+            for item in self.current_supply_list.items:
+                # Item 1
+                if item.product_code_1:
+                    nom1 = db.query(Nomenclature).filter(Nomenclature.code == item.product_code_1).first()
+                    if nom1:
+                        nom1.last_supply_date = datetime.now()
+                
+                # Item 2
+                if item.product_code_2:
+                    nom2 = db.query(Nomenclature).filter(Nomenclature.code == item.product_code_2).first()
+                    if nom2:
+                        nom2.last_supply_date = datetime.now()
+            
             db.commit()
             self.refresh_supply_table()
             self.load_draft_lists() # Refresh combo

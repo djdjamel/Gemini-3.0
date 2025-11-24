@@ -7,6 +7,7 @@ from database.connection import get_db
 from database.models import SupplyList, SupplyListItem, Location, Product
 from ui.dialogs import ChangeLocationDialog
 import logging
+from datetime import datetime
 
 logger = logging.getLogger(__name__)
 
@@ -115,15 +116,22 @@ class ValidationWidget(QWidget):
                 actions_layout.setContentsMargins(0, 0, 0, 0)
                 
                 # Delete (Mark as S/X)
-                del_btn = QPushButton("Supprimer")
+                del_btn = QPushButton()
+                del_btn.setObjectName("TableActionBtn")
+                del_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+                del_btn.setToolTip("Supprimer / Marquer comme Manquant")
                 del_btn.clicked.connect(lambda checked, r=row, i=item: self.mark_delete(r, i))
                 actions_layout.addWidget(del_btn)
                 
                 # Move
-                move_btn = QPushButton("Déplacer")
+                move_btn = QPushButton()
+                move_btn.setObjectName("TableActionBtn")
+                move_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_FileDialogListView))
+                move_btn.setToolTip("Déplacer")
                 move_btn.clicked.connect(lambda checked, r=row, i=item: self.mark_move(r, i))
                 actions_layout.addWidget(move_btn)
                 
+                actions_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 actions_widget.setLayout(actions_layout)
                 self.table.setCellWidget(row, 5, actions_widget)
             else:
@@ -186,6 +194,9 @@ class ValidationWidget(QWidget):
                 # Find product by barcode and location
                 prod = db.query(Product).join(Location).filter(Product.barcode == item.barcode_1, Location.label == item.location_1).first()
                 if prod:
+                    # Update Nomenclature last_edit_date
+                    if prod.nomenclature:
+                        prod.nomenclature.last_edit_date = datetime.now()
                     db.delete(prod)
             
             elif result != 'V':
@@ -195,6 +206,9 @@ class ValidationWidget(QWidget):
                      prod = db.query(Product).join(Location).filter(Product.barcode == item.barcode_1, Location.label == item.location_1).first()
                      if prod:
                          prod.location_id = new_loc.id
+                         # Update Nomenclature last_edit_date
+                         if prod.nomenclature:
+                             prod.nomenclature.last_edit_date = datetime.now()
 
         # Mark list as validated
         self.current_list.status = 'validated'

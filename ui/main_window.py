@@ -58,6 +58,30 @@ class MainWindow(QMainWindow):
         self.validation_tab = ValidationWidget()
         self.tabs.addTab(self.validation_tab, "Validation")
 
+        # 8. Facture
+        update_splash("Chargement du module Facture...")
+        from ui.invoice_widget import InvoiceWidget
+        self.invoice_tab = InvoiceWidget()
+        self.tabs.addTab(self.invoice_tab, "Facture")
+
+        # 9. Manquants Xp
+        update_splash("Chargement du module Manquants Xp...")
+        from ui.xp_missing_widget import XpMissingWidget
+        self.xp_missing_tab = XpMissingWidget()
+        self.tabs.addTab(self.xp_missing_tab, "Manquants Xp")
+
+        # 10. Rotation
+        update_splash("Chargement du module Rotation...")
+        from ui.rotation_widget import RotationWidget
+        self.rotation_tab = RotationWidget()
+        self.tabs.addTab(self.rotation_tab, "Rotation")
+
+        # 11. Produits Dormants
+        update_splash("Chargement du module Produits Dormants...")
+        from ui.dormant_widget import DormantWidget
+        self.dormant_tab = DormantWidget()
+        self.tabs.addTab(self.dormant_tab, "Produits Dormants")
+
         # 5. Paramètres
         update_splash("Chargement du module Paramètres...")
         from ui.settings_widget import SettingsWidget

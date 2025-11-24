@@ -36,10 +36,12 @@ def get_stylesheet():
     QTabBar::tab:selected {
         color: #5c7cfa;
         border-bottom: 3px solid #5c7cfa;
+        background-color: #f1f3f5;
+        border-radius: 6px;
     }
     QTabBar::tab:hover {
         color: #4263eb;
-        background-color: #f1f3f5;
+        background-color: #e7f5ff;
         border-radius: 6px;
     }
 
@@ -70,18 +72,18 @@ def get_stylesheet():
         color: #868e96;
         border: 1px solid transparent;
         border-radius: 6px;
-        min-width: 30px;
-        max-width: 30px;
-        min-height: 30px;
-        max-height: 30px;
+        min-width: 36px;
+        max-width: 36px;
+        min-height: 36px;
+        max-height: 36px;
         padding: 4px;
         margin: 0px;
-        qproperty-iconSize: 18px 18px;
+        qproperty-iconSize: 24px 24px;
     }
     QPushButton#TableActionBtn:hover {
-        background-color: #f1f3f5;
-        color: #5c7cfa;
-        border: 1px solid #dee2e6;
+        background-color: #ffe3e3;
+        color: #fa5252;
+        border: 1px solid #ffc9c9;
     }
     
     /* Inputs - Clean & Spacious */
@@ -114,6 +116,7 @@ def get_stylesheet():
     QTableWidget::item {
         padding: 8px;
         border-bottom: 1px solid #f1f3f5;
+        background-color: transparent;
     }
     QTableWidget::item:selected {
         background-color: #edf2ff;
@@ -121,7 +124,7 @@ def get_stylesheet():
         border-bottom: 1px solid #edf2ff;
     }
     QHeaderView::section {
-        background-color: #fdfdfd; /* Softer off-white */
+        background-color: #e9ecef; /* Light gray */
         color: #868e96;
         padding: 12px;
         border: none;

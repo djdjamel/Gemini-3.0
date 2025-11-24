@@ -19,16 +19,27 @@ class Location(Base):
 
     products = relationship("Product", back_populates="location")
 
+class Nomenclature(Base):
+    __tablename__ = 'nomenclature'
+    id = Column(Integer, primary_key=True)
+    code = Column(String(50), unique=True, nullable=False, index=True)
+    designation = Column(String(255), nullable=False)
+    last_supply_date = Column(DateTime, nullable=True)
+    last_search_date = Column(DateTime, nullable=True)
+    last_edit_date = Column(DateTime, nullable=True)
+
+    products = relationship("Product", back_populates="nomenclature", foreign_keys="Product.code", primaryjoin="Product.code==Nomenclature.code")
+
 class Product(Base):
     __tablename__ = 'products'
     id = Column(Integer, primary_key=True)
-    code = Column(String(50), nullable=False) # Code Produit (from XpertPharm)
+    code = Column(String(50), ForeignKey('nomenclature.code'), nullable=False) # Code Produit (from XpertPharm)
     barcode = Column(String(50), nullable=False) # Code Barre Lot
-    designation = Column(String(255), nullable=False)
     expiry_date = Column(Date, nullable=True)
     location_id = Column(Integer, ForeignKey('locations.id'))
     
     location = relationship("Location", back_populates="products")
+    nomenclature = relationship("Nomenclature", back_populates="products", foreign_keys=[code])
 
 class SupplyList(Base):
     __tablename__ = 'supply_lists'

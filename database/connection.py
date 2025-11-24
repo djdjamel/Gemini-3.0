@@ -68,3 +68,82 @@ def get_product_from_xpertpharm(barcode):
         return None
     finally:
         conn.close()
+
+def get_lots_by_product_code(product_code):
+    conn = get_xpertpharm_connection()
+    if not conn:
+        return []
+    
+    query = """
+    SELECT ST.[QUANTITE], ST.[CODE_BARRE_LOT], ST.[DATE_PEREMPTION], ST.[CREATED_ON] as DATE_ACHAT
+    FROM [XPERTPHARM5_7091_BOURENANE].[dbo].[STK_STOCK] ST
+    WHERE ST.[CODE_PRODUIT] = ? AND ST.[QUANTITE] > 0
+    ORDER BY ST.[DATE_PEREMPTION] ASC
+    """
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, product_code)
+        columns = [column[0] for column in cursor.description]
+        results = []
+        for row in cursor.fetchall():
+            results.append(dict(zip(columns, row)))
+        return results
+    except Exception as e:
+        logger.error(f"Error querying XpertPharm lots: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_latest_invoices():
+    conn = get_xpertpharm_connection()
+    if not conn:
+        return []
+    
+    query = """
+    SELECT TOP 20 [CODE_DOC],[DATE_DOC],[CODE_FACTURE],[TYPE_DOC],[TOTAL_TTC],[STATUS_DOC],a.[CREATED_ON] ,[NOM_TIERS] 
+    From [XPERTPHARM5_7091_BOURENANE].[dbo].[ACH_DOCUMENT] a  
+    inner join [XPERTPHARM5_7091_BOURENANE].[dbo].[TRS_TIERS]  t on a.CODE_TIERS = t.CODE_TIERS  
+    Where  [NOM_TIERS] != 'ARRIVAGE'  
+    Order by [CREATED_ON] desc
+    """
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        results = []
+        for row in cursor.fetchall():
+            results.append(dict(zip(columns, row)))
+        return results
+    except Exception as e:
+        logger.error(f"Error querying XpertPharm invoices: {e}")
+        return []
+    finally:
+        conn.close()
+
+def get_invoice_details(code_doc):
+    conn = get_xpertpharm_connection()
+    if not conn:
+        return []
+    
+    query = """
+    select ST.[ID_STOCK] ID_STOCK,ST.[CODE_PRODUIT] CODE_PRODUIT,ST.[QUANTITE]  QUANTITE ,ST.[LOT] LOT ,ST.[DATE_PEREMPTION] DATE_PEREMPTION ,ST.[CODE_BARRE_LOT] CODE_BARRE_LOT ,ST.[CREATED_ON] CREATED_ON , ST.DESIGNATION_PRODUIT AS DESIGNATION_PRODUIT   
+    FROM [XPERTPHARM5_7091_BOURENANE].[dbo].[View_ACH_DOCUMENT_DETAIL] ST  
+    WHERE ST.[CODE_DOC] = ?    
+    ORDER BY DESIGNATION_PRODUIT 
+    """
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, code_doc)
+        columns = [column[0] for column in cursor.description]
+        results = []
+        for row in cursor.fetchall():
+            results.append(dict(zip(columns, row)))
+        return results
+    except Exception as e:
+        logger.error(f"Error querying XpertPharm invoice details: {e}")
+        return []
+    finally:
+        conn.close()
