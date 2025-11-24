@@ -63,6 +63,9 @@ class SearchWidget(QWidget):
         
         # Double click to add to missing
         self.table.cellDoubleClicked.connect(self.on_table_double_click)
+        
+        # Single click to reveal masked location
+        self.table.cellClicked.connect(self.on_cell_clicked)
 
         # Set Custom Delegate for Background Coloring
         self.table.setItemDelegate(BackgroundDelegate(self.table))
@@ -99,12 +102,17 @@ class SearchWidget(QWidget):
             loc_label = prod.location.label if prod.location else "N/A"
             designation = prod.nomenclature.designation if prod.nomenclature else "Unknown"
             
-            def create_stock_item(text):
-                item = QTableWidgetItem(str(text or ""))
-                # item.setBackground(QColor("#e8f5e9")) # Light Green (Removed as per user request)
+            def create_stock_item(text, is_location=False):
+                if is_location:
+                    item = QTableWidgetItem("---") # Masked
+                    item.setData(Qt.ItemDataRole.UserRole, {"type": "location", "value": text})
+                    item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    item.setToolTip("Cliquez pour voir l'emplacement")
+                else:
+                    item = QTableWidgetItem(str(text or ""))
                 return item
 
-            self.table.setItem(row, 0, create_stock_item(loc_label))
+            self.table.setItem(row, 0, create_stock_item(loc_label, is_location=True))
             self.table.setItem(row, 1, create_stock_item(prod.code))
             self.table.setItem(row, 2, create_stock_item(designation))
             self.table.setItem(row, 3, create_stock_item(prod.barcode))
@@ -193,22 +201,37 @@ class SearchWidget(QWidget):
         
         if data and data.get("type") == "catalog":
             # It's a catalog item
-            self.add_to_missing(data["data"])
-        else:
-            # It's a stock item
-            # We need to reconstruct the data or fetch it. 
-            # Since we didn't store the full object in UserRole for stock items, 
-            # we can grab the code from column 1 and designation from column 2
-            code_item = self.table.item(row, 1)
-            designation_item = self.table.item(row, 2)
-            
-            if code_item and designation_item:
-                product_data = {
-                    "CODE_PRODUIT": code_item.text(),
-                    "designation": designation_item.text()
-                }
                 self.add_to_missing(product_data)
 
+
+    def on_cell_clicked(self, row, column):
+        item = self.table.item(row, column)
+        if not item:
+            return
+            
+        data = item.data(Qt.ItemDataRole.UserRole)
+        if data and isinstance(data, dict) and data.get("type") == "location":
+            # Reveal location
+            current_text = item.text()
+            real_value = data.get("value")
+            
+            if current_text == "---":
+                item.setText(real_value)
+                
+                # Update last_search_date
+                code_item = self.table.item(row, 1)
+                if code_item:
+                    code = code_item.text()
+                    try:
+                        db = next(get_db())
+                        nom = db.query(Nomenclature).filter(Nomenclature.code == code).first()
+                        if nom:
+                            nom.last_search_date = datetime.now()
+                            db.commit()
+                    except Exception as e:
+                        logger.error(f"Error updating last_search_date: {e}")
+            else:
+                item.setText("---") # Toggle back
 
     def add_to_missing(self, product_data):
         # product_data can be a Row (from distinct query) or Dict (from double click)
