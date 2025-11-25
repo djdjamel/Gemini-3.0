@@ -82,6 +82,12 @@ class MainWindow(QMainWindow):
         self.dormant_tab = DormantWidget()
         self.tabs.addTab(self.dormant_tab, "Produits Dormants")
 
+        # 12. Nomenclature
+        update_splash("Chargement du module Nomenclature...")
+        from ui.nomenclature_widget import NomenclatureWidget
+        self.nomenclature_tab = NomenclatureWidget()
+        self.tabs.addTab(self.nomenclature_tab, "Nomenclature")
+
         # 5. Paramètres
         update_splash("Chargement du module Paramètres...")
         from ui.settings_widget import SettingsWidget

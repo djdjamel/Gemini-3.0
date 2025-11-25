@@ -156,3 +156,22 @@ class MissingWidget(QWidget):
             
             self.lots_table.setItem(r, 2, QTableWidgetItem(date_str))
             self.lots_table.setItem(r, 3, QTableWidgetItem(str(lot.get('DATE_ACHAT', ''))))
+
+        # Add Total Row
+        if lots:
+            total_qty = sum(float(lot.get('QUANTITE', 0)) for lot in lots)
+            row = self.lots_table.rowCount()
+            self.lots_table.insertRow(row)
+            
+            item_label = QTableWidgetItem("Total")
+            item_label.setFont(self.get_bold_font())
+            self.lots_table.setItem(row, 0, item_label)
+            
+            item_qty = QTableWidgetItem(str(total_qty))
+            item_qty.setFont(self.get_bold_font())
+            self.lots_table.setItem(row, 1, item_qty)
+
+    def get_bold_font(self):
+        font = self.font()
+        font.setBold(True)
+        return font
