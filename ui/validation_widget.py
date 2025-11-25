@@ -4,7 +4,7 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt
 from database.connection import get_db
-from database.models import SupplyList, SupplyListItem, Location, Product
+from database.models import SupplyList, SupplyListItem, Location, Product, MissingItem
 from ui.dialogs import ChangeLocationDialog
 import logging
 from datetime import datetime
@@ -194,10 +194,32 @@ class ValidationWidget(QWidget):
                 # Find product by barcode and location
                 prod = db.query(Product).join(Location).filter(Product.barcode == item.barcode_1, Location.label == item.location_1).first()
                 if prod:
+                    # Check if it's the last one
+                    code = prod.code
+                    count = db.query(Product).filter(Product.code == code).count()
+
                     # Update Nomenclature last_edit_date
                     if prod.nomenclature:
                         prod.nomenclature.last_edit_date = datetime.now()
+                    
                     db.delete(prod)
+
+                    if count == 1:
+                        # It was the last one
+                        designation = prod.nomenclature.designation if prod.nomenclature else "Inconnu"
+                        
+                        # Check if already in missing
+                        existing_missing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
+                        if not existing_missing:
+                            new_missing = MissingItem(
+                                product_code=code,
+                                designation=designation,
+                                reported_at=datetime.now()
+                            )
+                            db.add(new_missing)
+                            # We can't easily show a message for each item in a loop, maybe log it or just do it silently.
+                            # Or accumulate messages? For now, let's just do it.
+                            logger.info(f"Auto-added {designation} to missing list during validation.")
             
             elif result != 'V':
                 # Assume it's a location label

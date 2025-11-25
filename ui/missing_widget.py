@@ -28,6 +28,11 @@ class MissingWidget(QWidget):
         add_btn.clicked.connect(self.add_item)
         top_layout.addWidget(add_btn)
         
+        delete_all_btn = QPushButton("Tout Supprimer")
+        delete_all_btn.clicked.connect(self.delete_all_items)
+        delete_all_btn.setStyleSheet("background-color: #ffcdd2; color: #c62828;") # Light red background, dark red text
+        top_layout.addWidget(delete_all_btn)
+        
         layout.addLayout(top_layout)
 
         # Table
@@ -119,6 +124,19 @@ class MissingWidget(QWidget):
             db.delete(item)
             db.commit()
             self.load_items()
+
+    def delete_all_items(self):
+        reply = QMessageBox.question(self, "Confirmer", "Voulez-vous vraiment supprimer TOUS les produits de la liste des manquants ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+        if reply == QMessageBox.StandardButton.Yes:
+            db = next(get_db())
+            try:
+                db.query(MissingItem).delete()
+                db.commit()
+                self.load_items()
+                QMessageBox.information(self, "Succès", "La liste des manquants a été vidée.")
+            except Exception as e:
+                db.rollback()
+                QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression : {e}")
 
     def load_lots_for_selected(self):
         self.lots_table.setRowCount(0)

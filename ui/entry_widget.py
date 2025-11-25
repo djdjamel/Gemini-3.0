@@ -1,16 +1,26 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QInputDialog, QStyle, QFileDialog, QComboBox
+    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QInputDialog, QStyle, QFileDialog, QComboBox, QStyledItemDelegate
 )
 from PyQt6.QtCore import Qt, QTimer, QEvent
+from PyQt6.QtGui import QColor
 from database.connection import get_db
-from database.models import Product, SupplyList, SupplyListItem, Nomenclature
+from database.models import Product, SupplyList, SupplyListItem, Nomenclature, MissingItem
 from sqlalchemy.orm import joinedload
 import logging
 import pandas as pd
 from datetime import datetime
 
 logger = logging.getLogger(__name__)
+
+class BackgroundDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        # Check if item has a background color set
+        bg_brush = index.data(Qt.ItemDataRole.BackgroundRole)
+        if bg_brush and not (option.state & QStyle.StateFlag.State_Selected):
+            painter.fillRect(option.rect, bg_brush)
+        
+        super().paint(painter, option, index)
 
 class EntryWidget(QWidget):
     def __init__(self):
@@ -73,7 +83,8 @@ class EntryWidget(QWidget):
         self.results_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self.results_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.results_table.doubleClicked.connect(self.add_to_supply_list)
-        self.results_table.verticalHeader().setDefaultSectionSize(60)
+        self.results_table.verticalHeader().setDefaultSectionSize(48)
+        self.results_table.setItemDelegate(BackgroundDelegate(self.results_table))
         
         # Install Event Filters for Navigation
         self.search_input.installEventFilter(self)
@@ -226,22 +237,79 @@ class EntryWidget(QWidget):
             return
 
         db = next(get_db())
+        # 1. Stock Items
         products = db.query(Product).join(Nomenclature).options(joinedload(Product.location), joinedload(Product.nomenclature)).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
         
-        self.results_table.setRowCount(len(products))
+        # 2. Catalog Items (Nomenclature)
+        catalog_items = db.query(Nomenclature).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+        
+        total_rows = len(products) + len(catalog_items)
+        self.results_table.setRowCount(total_rows)
+        
+        # Display Stock Items
         for row, prod in enumerate(products):
             loc_label = prod.location.label if prod.location else "N/A"
             designation = prod.nomenclature.designation if prod.nomenclature else "Unknown"
             
             item_desig = QTableWidgetItem(designation)
-            item_desig.setData(Qt.ItemDataRole.UserRole, prod) # Store object
+            item_desig.setData(Qt.ItemDataRole.UserRole, prod) # Store Product object
             
             self.results_table.setItem(row, 0, item_desig)
             self.results_table.setItem(row, 1, QTableWidgetItem(str(prod.code)))
             self.results_table.setItem(row, 2, QTableWidgetItem(loc_label))
             self.results_table.setItem(row, 3, QTableWidgetItem(str(prod.expiry_date)))
 
+        # Display Catalog Items
+        start_row = len(products)
+        for i, nom in enumerate(catalog_items):
+            row = start_row + i
+            
+            def create_colored_item(text):
+                item = QTableWidgetItem(str(text or ""))
+                item.setBackground(QColor("#ffebee")) # Light Red
+                return item
+
+            item_desig = create_colored_item(nom.designation)
+            item_desig.setData(Qt.ItemDataRole.UserRole, nom) # Store Nomenclature object
+            
+            self.results_table.setItem(row, 0, item_desig)
+            self.results_table.setItem(row, 1, create_colored_item(str(nom.code)))
+            self.results_table.setItem(row, 2, create_colored_item("CATALOGUE"))
+            self.results_table.setItem(row, 3, create_colored_item(""))
+
     def add_to_supply_list(self, index):
+        # Check if it's a valid index
+        if not index.isValid():
+            return False
+            
+        row = index.row()
+        item_data = self.results_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        
+        # Check if it's a Catalog Item (Nomenclature) -> Add to Missing
+        if isinstance(item_data, Nomenclature):
+            db = next(get_db())
+            try:
+                existing = db.query(MissingItem).filter(MissingItem.product_code == item_data.code).first()
+                if existing:
+                    existing.reported_at = datetime.now()
+                    msg = f"Le produit '{item_data.designation}' était déjà dans la liste des manquants. Date mise à jour."
+                else:
+                    new_missing = MissingItem(
+                        product_code=item_data.code,
+                        designation=item_data.designation,
+                        reported_at=datetime.now()
+                    )
+                    db.add(new_missing)
+                    msg = f"Le produit '{item_data.designation}' a été ajouté aux manquants."
+                
+                db.commit()
+                QMessageBox.information(self, "Succès", msg)
+                return True
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Erreur lors de l'ajout aux manquants: {e}")
+                return False
+
+        # If we are here, it's a Product (Stock Item) -> Add to Supply List
         if not self.current_supply_list:
             QMessageBox.warning(self, "Attention", "Veuillez d'abord créer une liste.")
             return False
@@ -251,8 +319,7 @@ class EntryWidget(QWidget):
             QMessageBox.warning(self, "Attention", "Cette liste est clôturée ou validée. Impossible d'ajouter des produits.")
             return False
 
-        row = index.row()
-        item1 = self.results_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        item1 = item_data # It's a Product object
         
         # Check for duplicates
         db = next(get_db())
