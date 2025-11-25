@@ -1,22 +1,27 @@
 import os
+import socket
 from dotenv import load_dotenv
 
 load_dotenv()
 
 class Config:
     # PostgreSQL (Local)
-    PG_HOST = os.getenv("PG_HOST", "localhost")
-    PG_PORT = os.getenv("PG_PORT", "5432")
-    PG_DB = os.getenv("PG_DB", "gravity_stock")
-    PG_USER = os.getenv("PG_USER", "postgres")
-    PG_PASSWORD = os.getenv("PG_PASSWORD", "gigigi2009")
+    PG_HOST = os.getenv("PG_HOST") or "localhost"
+    PG_PORT = os.getenv("PG_PORT") or "5432"
+    PG_DB = os.getenv("PG_DB") or "gravity_stock"
+    PG_USER = os.getenv("PG_USER") or "postgres"
+    PG_PASSWORD = os.getenv("PG_PASSWORD") or "gigigi2009"
+
+    # App Settings
+    IS_SERVER = os.getenv("IS_SERVER", "false").lower() == "true"
+    STATION_NAME = os.getenv("STATION_NAME") or socket.gethostname()
 
     # SQL Server (XpertPharm)
-    SQL_SERVER = os.getenv("SQL_SERVER", "DESKTOP-25MV5BR\SQLEXPRESS")
-    SQL_DB = os.getenv("SQL_DB", "XPERTPHARM5_7091_BOURENANE")
-    SQL_USER = os.getenv("SQL_USER", "sa")
-    SQL_PASSWORD = os.getenv("SQL_PASSWORD", "ounmadhr")
-    SQL_DRIVER = os.getenv("SQL_DRIVER", "ODBC Driver 17 for SQL Server")
+    SQL_SERVER = os.getenv("SQL_SERVER") or "DESKTOP-25MV5BR\SQLEXPRESS"
+    SQL_DB = os.getenv("SQL_DB") or "XPERTPHARM5_7091_BOURENANE"
+    SQL_USER = os.getenv("SQL_USER") or "sa"
+    SQL_PASSWORD = os.getenv("SQL_PASSWORD") or "ounmadhr"
+    SQL_DRIVER = os.getenv("SQL_DRIVER") or "ODBC Driver 17 for SQL Server"
 
     @property
     def POSTGRES_URI(self):

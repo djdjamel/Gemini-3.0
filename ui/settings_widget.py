@@ -1,7 +1,8 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QPushButton, QMessageBox, QGroupBox, QFormLayout
+    QPushButton, QMessageBox, QGroupBox, QFormLayout, QCheckBox
 )
+from config import config
 import os
 
 class SettingsWidget(QWidget):
@@ -56,6 +57,20 @@ class SettingsWidget(QWidget):
         pg_group.setLayout(pg_layout)
         layout.addWidget(pg_group)
 
+        # App Settings
+        app_group = QGroupBox("Application Settings")
+        app_layout = QFormLayout()
+        
+        self.is_server_cb = QCheckBox("Mode Serveur")
+        self.is_server_cb.setToolTip("Cochez cette case si ce poste fait office de serveur.")
+        app_layout.addRow(self.is_server_cb)
+        
+        self.station_name = QLineEdit()
+        app_layout.addRow("Nom du Poste:", self.station_name)
+        
+        app_group.setLayout(app_layout)
+        layout.addWidget(app_group)
+
         # Save Button
         save_btn = QPushButton("Enregistrer")
         save_btn.clicked.connect(self.save_settings)
@@ -71,16 +86,21 @@ class SettingsWidget(QWidget):
         # Ideally, we should have a persistent config file (ini/json) in user profile.
         # For now, let's just populate with what's in os.environ (loaded by dotenv)
         
-        self.sql_server.setText(os.getenv("SQL_SERVER", ""))
-        self.sql_db.setText(os.getenv("SQL_DB", ""))
-        self.sql_user.setText(os.getenv("SQL_USER", ""))
-        self.sql_pass.setText(os.getenv("SQL_PASSWORD", ""))
+        self.sql_server.setText(config.SQL_SERVER)
+        self.sql_db.setText(config.SQL_DB)
+        self.sql_user.setText(config.SQL_USER)
+        self.sql_pass.setText(config.SQL_PASSWORD)
         
-        self.pg_host.setText(os.getenv("PG_HOST", "localhost"))
-        self.pg_port.setText(os.getenv("PG_PORT", "5432"))
-        self.pg_db.setText(os.getenv("PG_DB", "gravity_stock"))
-        self.pg_user.setText(os.getenv("PG_USER", "postgres"))
-        self.pg_pass.setText(os.getenv("PG_PASSWORD", ""))
+        self.pg_host.setText(config.PG_HOST)
+        self.pg_port.setText(config.PG_PORT)
+        self.pg_db.setText(config.PG_DB)
+        self.pg_user.setText(config.PG_USER)
+        self.pg_pass.setText(config.PG_PASSWORD)
+        
+        self.pg_pass.setText(config.PG_PASSWORD)
+        
+        self.is_server_cb.setChecked(config.IS_SERVER)
+        self.station_name.setText(config.STATION_NAME)
 
     def save_settings(self):
         # Write to .env file
@@ -95,6 +115,9 @@ SQL_SERVER={self.sql_server.text()}
 SQL_DB={self.sql_db.text()}
 SQL_USER={self.sql_user.text()}
 SQL_PASSWORD={self.sql_pass.text()}
+
+IS_SERVER={str(self.is_server_cb.isChecked()).lower()}
+STATION_NAME={self.station_name.text()}
 """
         try:
             with open(".env", "w") as f:

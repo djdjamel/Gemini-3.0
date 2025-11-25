@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal, QThread
 from PyQt6.QtGui import QIcon
 from database.connection import get_db, get_product_from_xpertpharm
-from database.models import Location, Product, Nomenclature
+from database.models import Location, Product, Nomenclature, MissingItem
 from utils.barcode_utils import is_location_barcode, parse_location_barcode
 from ui.dialogs import ChangeLocationDialog
 from sqlalchemy.orm import Session
@@ -134,6 +134,7 @@ class InventoryWidget(QWidget):
             self.location_combo.setCurrentIndex(index)
         
         self.current_location = location
+        self.speak(location.label)
         self.load_products()
 
     def process_product_scan(self, barcode):
@@ -183,6 +184,7 @@ class InventoryWidget(QWidget):
             db.add(new_product)
             db.commit()
             self.load_products()
+            self.speak("Suivant")
         except Exception as e:
             db.rollback()
             self.show_error("Erreur", f"Erreur lors de l'ajout du produit: {e}")
@@ -235,11 +237,31 @@ class InventoryWidget(QWidget):
             db = next(get_db())
             prod = db.query(Product).filter(Product.id == product_id).first()
             if prod:
+                # Check if it's the last one
+                code = prod.code
+                count = db.query(Product).filter(Product.code == code).count()
+                
                 # Update Nomenclature last_edit_date
                 if prod.nomenclature:
                     prod.nomenclature.last_edit_date = datetime.now()
                 
                 db.delete(prod)
+                
+                if count == 1:
+                    # It was the last one
+                    designation = prod.nomenclature.designation if prod.nomenclature else "Inconnu"
+                    
+                    # Check if already in missing (just in case)
+                    existing_missing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
+                    if not existing_missing:
+                        new_missing = MissingItem(
+                            product_code=code,
+                            designation=designation,
+                            reported_at=datetime.now()
+                        )
+                        db.add(new_missing)
+                        self.show_error("Info", f"Le produit '{designation}' était le dernier en stock. Il a été ajouté aux manquants.")
+                
                 db.commit()
                 self.load_products()
 

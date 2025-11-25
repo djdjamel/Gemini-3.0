@@ -273,11 +273,31 @@ class SearchWidget(QWidget):
             db = next(get_db())
             prod = db.query(Product).filter(Product.id == product_id).first()
             if prod:
+                # Check if it's the last one
+                code = prod.code
+                count = db.query(Product).filter(Product.code == code).count()
+
                 # Update Nomenclature last_edit_date
                 if prod.nomenclature:
                     prod.nomenclature.last_edit_date = datetime.now()
                     
                 db.delete(prod)
+                
+                if count == 1:
+                    # It was the last one
+                    designation = prod.nomenclature.designation if prod.nomenclature else "Inconnu"
+                    
+                    # Check if already in missing
+                    existing_missing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
+                    if not existing_missing:
+                        new_missing = MissingItem(
+                            product_code=code,
+                            designation=designation,
+                            reported_at=datetime.now()
+                        )
+                        db.add(new_missing)
+                        QMessageBox.information(self, "Info", f"Le produit '{designation}' était le dernier en stock. Il a été ajouté aux manquants.")
+
                 db.commit()
                 self.perform_search() # Refresh
 
