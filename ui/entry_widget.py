@@ -296,7 +296,7 @@ class EntryWidget(QWidget):
                 else:
                     new_missing = MissingItem(
                         product_code=item_data.code,
-                        designation=item_data.designation,
+                        source="Saisie",
                         reported_at=datetime.now()
                     )
                     db.add(new_missing)

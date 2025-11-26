@@ -201,7 +201,7 @@ class SearchWidget(QWidget):
         
         if data and data.get("type") == "catalog":
             # It's a catalog item
-                self.add_to_missing(product_data)
+            self.add_to_missing(data.get("data"))
 
 
     def on_cell_clicked(self, row, column):
@@ -255,7 +255,7 @@ class SearchWidget(QWidget):
             else:
                 new_missing = MissingItem(
                     product_code=code,
-                    designation=designation,
+                    source="Recherche",
                     reported_at=datetime.now()
                 )
                 db.add(new_missing)

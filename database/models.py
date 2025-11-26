@@ -80,5 +80,8 @@ class MissingItem(Base):
     __tablename__ = 'missing_items'
     id = Column(Integer, primary_key=True)
     product_code = Column(String(50))
-    designation = Column(String(255))
+    # designation removed, linked via nomenclature
+    source = Column(String(50), default='Inconnu')
     reported_at = Column(DateTime, default=datetime.now)
+
+    nomenclature = relationship("Nomenclature", primaryjoin="foreign(MissingItem.product_code) == Nomenclature.code", viewonly=True)

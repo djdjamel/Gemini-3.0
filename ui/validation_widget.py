@@ -213,7 +213,7 @@ class ValidationWidget(QWidget):
                         if not existing_missing:
                             new_missing = MissingItem(
                                 product_code=code,
-                                designation=designation,
+                                source="Validation",
                                 reported_at=datetime.now()
                             )
                             db.add(new_missing)

@@ -61,24 +61,22 @@ class MissingWidget(QWidget):
         if not code:
             return
 
-        # Try to get designation from XpertPharm if possible, otherwise just use code
-        # Requirement says "quand un produit est épuisé... mentionné... par son code et date"
-        # It doesn't explicitly say we need to fetch name, but it's better UX.
-        # However, we might not have a barcode, just a product code?
-        # Let's assume input is barcode or code.
+        # Try to get designation from XpertPharm if possible to ensure it exists in Nomenclature?
+        # Actually, we just add the code. The designation comes from Nomenclature.
+        # If it's not in Nomenclature, it will show as "Inconnu" or we should ensure it's in Nomenclature.
         
-        # If it's a barcode, we can fetch details.
-        designation = "Inconnu"
-        # Try fetching by barcode first
+        # Check if product exists in Nomenclature, if not maybe fetch from XP and add it?
+        # For now, just add the MissingItem.
+        
+        # If input is barcode, resolve to code
         prod_data = get_product_from_xpertpharm(code)
         if prod_data:
-            designation = prod_data['designation']
-            code = prod_data['CODE_PRODUIT'] # Use actual product code
+            code = prod_data['CODE_PRODUIT']
         
         db = next(get_db())
         new_item = MissingItem(
             product_code=code,
-            designation=designation,
+            source="Manquant",
             reported_at=datetime.now()
         )
         
@@ -93,12 +91,17 @@ class MissingWidget(QWidget):
     def load_items(self):
         self.table.setRowCount(0)
         db = next(get_db())
-        items = db.query(MissingItem).order_by(MissingItem.reported_at.desc()).all()
+        # Join with Nomenclature to get designation
+        # We use outerjoin in case it's missing from Nomenclature
+        from database.models import Nomenclature
+        items = db.query(MissingItem).outerjoin(Nomenclature, MissingItem.product_code == Nomenclature.code).order_by(MissingItem.reported_at.desc()).all()
         
         self.table.setRowCount(len(items))
         for row, item in enumerate(items):
+            designation = item.nomenclature.designation if item.nomenclature else "Inconnu"
+            
             self.table.setItem(row, 0, QTableWidgetItem(item.product_code))
-            self.table.setItem(row, 1, QTableWidgetItem(item.designation))
+            self.table.setItem(row, 1, QTableWidgetItem(designation))
             self.table.setItem(row, 2, QTableWidgetItem(str(item.reported_at)))
             
             btn = QPushButton()
