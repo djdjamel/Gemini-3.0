@@ -1,11 +1,21 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QStyle
+    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QStyle, QStyledItemDelegate
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QColor
 from database.connection import get_db, get_product_from_xpertpharm, get_lots_by_product_code
 from database.models import MissingItem
 from datetime import datetime
+
+class BackgroundDelegate(QStyledItemDelegate):
+    def paint(self, painter, option, index):
+        # Check if item has a background color set
+        bg_brush = index.data(Qt.ItemDataRole.BackgroundRole)
+        if bg_brush and not (option.state & QStyle.StateFlag.State_Selected):
+            painter.fillRect(option.rect, bg_brush)
+        
+        super().paint(painter, option, index)
 
 class MissingWidget(QWidget):
     def __init__(self):
@@ -42,6 +52,10 @@ class MissingWidget(QWidget):
         self.table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
         self.table.verticalHeader().setDefaultSectionSize(60)
         self.table.itemSelectionChanged.connect(self.load_lots_for_selected)
+        
+        # Set Custom Delegate for Background Coloring
+        self.table.setItemDelegate(BackgroundDelegate(self.table))
+        
         layout.addWidget(self.table)
         
         # Lots Table
@@ -107,6 +121,12 @@ class MissingWidget(QWidget):
                 self.table.setItem(row, 0, QTableWidgetItem(item.product_code))
                 self.table.setItem(row, 1, QTableWidgetItem(designation))
                 self.table.setItem(row, 2, QTableWidgetItem(str(item.reported_at)))
+                
+                # Highlight "Comptoir" items
+                if item.source == "Comptoir":
+                    color = QColor("#fff9c4") # Light Yellow
+                    for col in range(3):
+                        self.table.item(row, col).setBackground(color)
                 
                 btn = QPushButton()
                 btn.setObjectName("TableActionBtn")
