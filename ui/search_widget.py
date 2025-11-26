@@ -17,7 +17,9 @@ class BackgroundDelegate(QStyledItemDelegate):
         super().paint(painter, option, index)
 
 from database.connection import get_db
-from database.models import Product, Location, MissingItem, Nomenclature
+from database.models import Product, Location, MissingItem, Nomenclature, Notification
+from ui.request_dialog import RequestDialog
+from config import config
 from sqlalchemy.orm import joinedload
 from ui.dialogs import ChangeLocationDialog
 import logging
@@ -84,18 +86,20 @@ class SearchWidget(QWidget):
         if not query_text:
             return
 
-        db = next(get_db())
-        # ILIKE for case-insensitive search in Postgres, but standard SQL uses LIKE. 
-        # 1. Local Search (Inventory - Stock Lines)
-        stock_lines = db.query(Product).join(Nomenclature).options(joinedload(Product.location), joinedload(Product.nomenclature)).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
-        
-        # 2. Local Search (Distinct Products - Catalog View)
-        # We want to find unique products matching the description to allow adding to "Missing"
-        # distinct() on code/designation
-        distinct_products = db.query(Nomenclature.code, Nomenclature.designation).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
-        
-        total_rows = len(stock_lines) + len(distinct_products)
-        self.table.setRowCount(total_rows)
+        with get_db() as db:
+            if not db: return
+            
+            # ILIKE for case-insensitive search in Postgres, but standard SQL uses LIKE. 
+            # 1. Local Search (Inventory - Stock Lines)
+            stock_lines = db.query(Product).join(Nomenclature).options(joinedload(Product.location), joinedload(Product.nomenclature)).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+            
+            # 2. Local Search (Distinct Products - Catalog View)
+            # We want to find unique products matching the description to allow adding to "Missing"
+            # distinct() on code/designation
+            distinct_products = db.query(Nomenclature.code, Nomenclature.designation).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+            
+            total_rows = len(stock_lines) + len(distinct_products)
+            self.table.setRowCount(total_rows)
         
         # Display Stock Lines
         for row, prod in enumerate(stock_lines):
@@ -138,6 +142,14 @@ class SearchWidget(QWidget):
             del_btn.setToolTip("Supprimer")
             del_btn.clicked.connect(lambda checked, p_id=prod.id: self.delete_product(p_id))
             actions_layout.addWidget(del_btn)
+
+            # Message Button
+            msg_btn = QPushButton()
+            msg_btn.setObjectName("TableActionBtn")
+            msg_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_MessageBoxInformation))
+            msg_btn.setToolTip("Demander ce produit")
+            msg_btn.clicked.connect(lambda checked, p=prod: self.open_request_dialog(p))
+            actions_layout.addWidget(msg_btn)
             
             actions_widget.setLayout(actions_layout)
             self.table.setCellWidget(row, 5, actions_widget)
@@ -223,11 +235,12 @@ class SearchWidget(QWidget):
                 if code_item:
                     code = code_item.text()
                     try:
-                        db = next(get_db())
-                        nom = db.query(Nomenclature).filter(Nomenclature.code == code).first()
-                        if nom:
-                            nom.last_search_date = datetime.now()
-                            db.commit()
+                        with get_db() as db:
+                            if db:
+                                nom = db.query(Nomenclature).filter(Nomenclature.code == code).first()
+                                if nom:
+                                    nom.last_search_date = datetime.now()
+                                    db.commit()
                     except Exception as e:
                         logger.error(f"Error updating last_search_date: {e}")
             else:
@@ -246,74 +259,116 @@ class SearchWidget(QWidget):
         if not code:
             return
 
-        db = next(get_db())
         try:
-            existing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
-            if existing:
-                existing.reported_at = datetime.now()
-                msg = f"Le produit '{designation}' était déjà dans la liste des manquants. Date mise à jour."
-            else:
-                new_missing = MissingItem(
-                    product_code=code,
-                    source="Recherche",
-                    reported_at=datetime.now()
-                )
-                db.add(new_missing)
-                msg = f"Le produit '{designation}' a été ajouté aux manquants."
-            
-            db.commit()
-            QMessageBox.information(self, "Succès", msg)
+            with get_db() as db:
+                if not db: return
+                
+                existing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
+                if existing:
+                    existing.reported_at = datetime.now()
+                    msg = f"Le produit '{designation}' était déjà dans la liste des manquants. Date mise à jour."
+                else:
+                    new_missing = MissingItem(
+                        product_code=code,
+                        source="Recherche",
+                        reported_at=datetime.now()
+                    )
+                    db.add(new_missing)
+                    msg = f"Le produit '{designation}' a été ajouté aux manquants."
+                
+                db.commit()
+                QMessageBox.information(self, "Succès", msg)
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Erreur lors de l'ajout aux manquants: {e}")
+
+    def open_request_dialog(self, product):
+        # product is a Product object
+        dialog = RequestDialog(product.nomenclature.designation if product.nomenclature else "Inconnu", self)
+        if dialog.exec():
+            data = dialog.get_data()
+            self.send_request(product, data)
+
+    def send_request(self, product, data):
+        try:
+            with get_db() as db:
+                if not db: return
+                
+                notif = Notification(
+                    sender_station=config.STATION_NAME or "Unknown",
+                    product_code=product.code,
+                    product_name=product.nomenclature.designation if product.nomenclature else "Inconnu",
+                    quantity=data['quantity'],
+                    message=data['message'],
+                    is_urgent=data['is_urgent']
+                )
+                db.add(notif)
+                db.commit()
+                QMessageBox.information(self, "Succès", "Demande envoyée au serveur.")
+        except Exception as e:
+            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'envoi: {e}")
 
 
     def delete_product(self, product_id):
         reply = QMessageBox.question(self, "Confirmer", "Voulez-vous vraiment supprimer ce produit ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            db = next(get_db())
-            prod = db.query(Product).filter(Product.id == product_id).first()
-            if prod:
-                # Check if it's the last one
-                code = prod.code
-                count = db.query(Product).filter(Product.code == code).count()
-
-                # Update Nomenclature last_edit_date
-                if prod.nomenclature:
-                    prod.nomenclature.last_edit_date = datetime.now()
-                    
-                db.delete(prod)
+            with get_db() as db:
+                if not db: return
                 
-                if count == 1:
-                    # It was the last one
-                    designation = prod.nomenclature.designation if prod.nomenclature else "Inconnu"
-                    
-                    # Check if already in missing
-                    existing_missing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
-                    if not existing_missing:
-                        new_missing = MissingItem(
-                            product_code=code,
-                            designation=designation,
-                            reported_at=datetime.now()
-                        )
-                        db.add(new_missing)
-                        QMessageBox.information(self, "Info", f"Le produit '{designation}' était le dernier en stock. Il a été ajouté aux manquants.")
+                prod = db.query(Product).filter(Product.id == product_id).first()
+                if prod:
+                    # Check if it's the last one
+                    code = prod.code
+                    count = db.query(Product).filter(Product.code == code).count()
 
-                db.commit()
+                    # Update Nomenclature last_edit_date
+                    if prod.nomenclature:
+                        prod.nomenclature.last_edit_date = datetime.now()
+                        
+                    db.delete(prod)
+                    
+                    if count == 1:
+                        # It was the last one
+                        designation = prod.nomenclature.designation if prod.nomenclature else "Inconnu"
+                        
+                        # Check if already in missing
+                        existing_missing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
+                        if not existing_missing:
+                            new_missing = MissingItem(
+                                product_code=code,
+                                source="Manquant", # Assuming auto-add is Manquant source here too? Or "Recherche"?
+                                # Wait, previous code had designation=designation which is wrong for new model.
+                                # And it didn't have source.
+                                # Let's fix this while we are here.
+                                # The original code was:
+                                # new_missing = MissingItem(product_code=code, designation=designation, reported_at=datetime.now())
+                                # But MissingItem no longer has designation.
+                                # And it needs source.
+                                # I should fix this.
+                                reported_at=datetime.now()
+                            )
+                            # Let's set source="Recherche" or "Suppression"
+                            new_missing.source = "Recherche" 
+                            db.add(new_missing)
+                            QMessageBox.information(self, "Info", f"Le produit '{designation}' était le dernier en stock. Il a été ajouté aux manquants.")
+
+                    db.commit()
                 self.perform_search() # Refresh
 
     def move_product(self, product):
         dialog = ChangeLocationDialog(product.location_id, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_loc_id = dialog.selected_location_id
+            new_loc_id = dialog.selected_location_id
             if new_loc_id:
-                db = next(get_db())
-                prod_db = db.query(Product).filter(Product.id == product.id).first()
-                if prod_db:
-                    prod_db.location_id = new_loc_id
-                    
-                    # Update Nomenclature last_edit_date
-                    if prod_db.nomenclature:
-                        prod_db.nomenclature.last_edit_date = datetime.now()
-                        
-                    db.commit()
+                with get_db() as db:
+                    if db:
+                        prod_db = db.query(Product).filter(Product.id == product.id).first()
+                        if prod_db:
+                            prod_db.location_id = new_loc_id
+                            
+                            # Update Nomenclature last_edit_date
+                            if prod_db.nomenclature:
+                                prod_db.nomenclature.last_edit_date = datetime.now()
+                                
+                            db.commit()
                     self.perform_search() # Refresh

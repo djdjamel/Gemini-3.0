@@ -154,12 +154,13 @@ class EntryWidget(QWidget):
         self.draft_combo.clear()
         self.draft_combo.addItem("Sélectionner un brouillon...", None)
         
-        db = next(get_db())
-        # Fetch lists with status 'draft' or None
-        drafts = db.query(SupplyList).filter((SupplyList.status == 'draft') | (SupplyList.status == None)).order_by(SupplyList.created_at.desc()).all()
-        
-        for d in drafts:
-            self.draft_combo.addItem(f"{d.title} ({d.created_at.strftime('%d/%m %H:%M')})", d.id)
+        with get_db() as db:
+            if db:
+                # Fetch lists with status 'draft' or None
+                drafts = db.query(SupplyList).filter((SupplyList.status == 'draft') | (SupplyList.status == None)).order_by(SupplyList.created_at.desc()).all()
+                
+                for d in drafts:
+                    self.draft_combo.addItem(f"{d.title} ({d.created_at.strftime('%d/%m %H:%M')})", d.id)
             
         self.draft_combo.blockSignals(False)
 
@@ -171,29 +172,31 @@ class EntryWidget(QWidget):
         if not list_id:
             return
             
-        db = next(get_db())
-        self.current_supply_list = db.query(SupplyList).get(list_id)
-        
-        if self.current_supply_list:
-            self.refresh_supply_table()
-            # Update title input just for visual confirmation, but it's for new lists usually
-            self.list_title_input.setText(self.current_supply_list.title)
+        with get_db() as db:
+            if db:
+                self.current_supply_list = db.query(SupplyList).get(list_id)
+                
+                if self.current_supply_list:
+                    self.refresh_supply_table()
+                    # Update title input just for visual confirmation, but it's for new lists usually
+                    self.list_title_input.setText(self.current_supply_list.title)
 
     def create_list(self):
         title = self.list_title_input.text().strip()
         if not title:
             title = f"Liste du {datetime.now().strftime('%d/%m/%Y %H:%M')}"
 
-        db = next(get_db())
-        new_list = SupplyList(title=title, status='draft')
-        db.add(new_list)
-        db.commit()
-        
-        self.current_supply_list = new_list
-        self.current_list_label.setText(f"Liste active: {title} (BROUILLON)")
-        self.list_title_input.clear()
-        self.refresh_supply_table()
-        self.load_draft_lists() # Refresh combo
+        with get_db() as db:
+            if db:
+                new_list = SupplyList(title=title, status='draft')
+                db.add(new_list)
+                db.commit()
+                
+                self.current_supply_list = new_list
+                self.current_list_label.setText(f"Liste active: {title} (BROUILLON)")
+                self.list_title_input.clear()
+                self.refresh_supply_table()
+                self.load_draft_lists() # Refresh combo
 
     def delete_current_list(self):
         if not self.current_supply_list:
@@ -208,21 +211,23 @@ class EntryWidget(QWidget):
 
         if reply == QMessageBox.StandardButton.Yes:
             try:
-                db = next(get_db())
-                # Re-fetch to ensure attached to session
-                lst = db.query(SupplyList).get(self.current_supply_list.id)
-                if lst:
-                    # Delete items first
-                    db.query(SupplyListItem).filter(SupplyListItem.supply_list_id == lst.id).delete()
-                    db.delete(lst)
-                    db.commit()
-                    
-                    self.current_supply_list = None
-                    self.current_list_label.setText("Aucune liste active")
-                    self.list_title_input.clear()
-                    self.supply_table.setRowCount(0)
-                    self.load_draft_lists() # Refresh combo
-                    QMessageBox.information(self, "Succès", "Liste supprimée avec succès.")
+
+                with get_db() as db:
+                    if not db: return
+                    # Re-fetch to ensure attached to session
+                    lst = db.query(SupplyList).get(self.current_supply_list.id)
+                    if lst:
+                        # Delete items first
+                        db.query(SupplyListItem).filter(SupplyListItem.supply_list_id == lst.id).delete()
+                        db.delete(lst)
+                        db.commit()
+                        
+                        self.current_supply_list = None
+                        self.current_list_label.setText("Aucune liste active")
+                        self.list_title_input.clear()
+                        self.supply_table.setRowCount(0)
+                        self.load_draft_lists() # Refresh combo
+                        QMessageBox.information(self, "Succès", "Liste supprimée avec succès.")
             except Exception as e:
                 QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression: {e}")
 
@@ -236,12 +241,13 @@ class EntryWidget(QWidget):
         if not query_text:
             return
 
-        db = next(get_db())
-        # 1. Stock Items
-        products = db.query(Product).join(Nomenclature).options(joinedload(Product.location), joinedload(Product.nomenclature)).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
-        
-        # 2. Catalog Items (Nomenclature)
-        catalog_items = db.query(Nomenclature).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+        with get_db() as db:
+            if not db: return
+            # 1. Stock Items
+            products = db.query(Product).join(Nomenclature).options(joinedload(Product.location), joinedload(Product.nomenclature)).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+            
+            # 2. Catalog Items (Nomenclature)
+            catalog_items = db.query(Nomenclature).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
         
         total_rows = len(products) + len(catalog_items)
         self.results_table.setRowCount(total_rows)
@@ -287,27 +293,28 @@ class EntryWidget(QWidget):
         
         # Check if it's a Catalog Item (Nomenclature) -> Add to Missing
         if isinstance(item_data, Nomenclature):
-            db = next(get_db())
-            try:
-                existing = db.query(MissingItem).filter(MissingItem.product_code == item_data.code).first()
-                if existing:
-                    existing.reported_at = datetime.now()
-                    msg = f"Le produit '{item_data.designation}' était déjà dans la liste des manquants. Date mise à jour."
-                else:
-                    new_missing = MissingItem(
-                        product_code=item_data.code,
-                        source="Saisie",
-                        reported_at=datetime.now()
-                    )
-                    db.add(new_missing)
-                    msg = f"Le produit '{item_data.designation}' a été ajouté aux manquants."
-                
-                db.commit()
-                QMessageBox.information(self, "Succès", msg)
-                return True
-            except Exception as e:
-                QMessageBox.critical(self, "Erreur", f"Erreur lors de l'ajout aux manquants: {e}")
-                return False
+            with get_db() as db:
+                if not db: return False
+                try:
+                    existing = db.query(MissingItem).filter(MissingItem.product_code == item_data.code).first()
+                    if existing:
+                        existing.reported_at = datetime.now()
+                        msg = f"Le produit '{item_data.designation}' était déjà dans la liste des manquants. Date mise à jour."
+                    else:
+                        new_missing = MissingItem(
+                            product_code=item_data.code,
+                            source="Saisie",
+                            reported_at=datetime.now()
+                        )
+                        db.add(new_missing)
+                        msg = f"Le produit '{item_data.designation}' a été ajouté aux manquants."
+                    
+                    db.commit()
+                    QMessageBox.information(self, "Succès", msg)
+                    return True
+                except Exception as e:
+                    QMessageBox.critical(self, "Erreur", f"Erreur lors de l'ajout aux manquants: {e}")
+                    return False
 
         # If we are here, it's a Product (Stock Item) -> Add to Supply List
         if not self.current_supply_list:
@@ -322,68 +329,63 @@ class EntryWidget(QWidget):
         item1 = item_data # It's a Product object
         
         # Check for duplicates
-        db = next(get_db())
-        existing_item = db.query(SupplyListItem).filter(
-            SupplyListItem.supply_list_id == self.current_supply_list.id,
-            SupplyListItem.product_code_1 == item1.code
-        ).first()
-        
-        item1_designation = item1.nomenclature.designation if item1.nomenclature else "Unknown"
-
-        if existing_item:
-             QMessageBox.warning(self, "Doublon", f"Le produit '{item1_designation}' est déjà dans la liste.")
-             return False
-
-        # Ask for Quantity
-        qty, ok = QInputDialog.getInt(self, "Quantité", f"Quantité pour {item1_designation}:", 1, 1, 10000)
-        if not ok:
-            return False
-
-        # Logic for Item 2: "l'element suivant dans la liste des résultats... qui porte la meme designation"
-        item2 = None
-        if row + 1 < self.results_table.rowCount():
-            next_item = self.results_table.item(row + 1, 0).data(Qt.ItemDataRole.UserRole)
-            next_item_designation = next_item.nomenclature.designation if next_item.nomenclature else "Unknown"
-            if next_item_designation == item1_designation:
-                item2 = next_item
-
-        # Add to DB
-        db = next(get_db())
-        
-        # Fix DetachedInstanceError: Merge the object into the current session
-        if self.current_supply_list:
-            self.current_supply_list = db.merge(self.current_supply_list)
-        
-        loc1 = item1.location.label if item1.location else ""
-        loc2 = item2.location.label if item2 and item2.location else ""
-        
-        item2_designation = item2.nomenclature.designation if item2 and item2.nomenclature else None
-
-        list_item = SupplyListItem(
-            supply_list_id=self.current_supply_list.id,
-            product_code_1=item1.code,
-            designation_1=item1_designation,
-            location_1=loc1,
-            barcode_1=item1.barcode,
-            expiry_date_1=item1.expiry_date,
+        # Check for duplicates
+        with get_db() as db:
+            if not db: return False
+            existing_item = db.query(SupplyListItem).filter(
+                SupplyListItem.supply_list_id == self.current_supply_list.id,
+                SupplyListItem.product_code_1 == item1.code
+            ).first()
             
-            product_code_2=item2.code if item2 else None,
-            designation_2=item2_designation,
-            location_2=loc2 if item2 else None,
-            barcode_2=item2.barcode if item2 else None,
-            expiry_date_2=item2.expiry_date if item2 else None,
+            item1_designation = item1.nomenclature.designation if item1.nomenclature else "Unknown"
+
+            if existing_item:
+                 QMessageBox.warning(self, "Doublon", f"Le produit '{item1_designation}' est déjà dans la liste.")
+                 return False
+
+            # Ask for Quantity
+            qty, ok = QInputDialog.getInt(self, "Quantité", f"Quantité pour {item1_designation}:", 1, 1, 10000)
+            if not ok:
+                return False
+
+            # Logic for Item 2: "l'element suivant dans la liste des résultats... qui porte la meme designation"
+            item2 = None
+            if row + 1 < self.results_table.rowCount():
+                next_item = self.results_table.item(row + 1, 0).data(Qt.ItemDataRole.UserRole)
+                next_item_designation = next_item.nomenclature.designation if next_item.nomenclature else "Unknown"
+                if next_item_designation == item1_designation:
+                    item2 = next_item
+
+            # Add to DB
             
-            quantity=qty
-        )
-        
-        # Update last_supply_date on Nomenclature - MOVED TO CLOSE_LIST
-        # if item1.nomenclature:
-        #     item1.nomenclature.last_supply_date = datetime.now()
-        # if item2 and item2.nomenclature:
-        #     item2.nomenclature.last_supply_date = datetime.now()
+            # Fix DetachedInstanceError: Merge the object into the current session
+            if self.current_supply_list:
+                self.current_supply_list = db.merge(self.current_supply_list)
             
-        db.add(list_item)
-        db.commit()
+            loc1 = item1.location.label if item1.location else ""
+            loc2 = item2.location.label if item2 and item2.location else ""
+            
+            item2_designation = item2.nomenclature.designation if item2 and item2.nomenclature else None
+
+            list_item = SupplyListItem(
+                supply_list_id=self.current_supply_list.id,
+                product_code_1=item1.code,
+                designation_1=item1_designation,
+                location_1=loc1,
+                barcode_1=item1.barcode,
+                expiry_date_1=item1.expiry_date,
+                
+                product_code_2=item2.code if item2 else None,
+                designation_2=item2_designation,
+                location_2=loc2 if item2 else None,
+                barcode_2=item2.barcode if item2 else None,
+                expiry_date_2=item2.expiry_date if item2 else None,
+                
+                quantity=qty
+            )
+            
+            db.add(list_item)
+            db.commit()
         
         self.refresh_supply_table()
         return True
@@ -396,61 +398,58 @@ class EntryWidget(QWidget):
             return
 
         # Use a fresh session to get the latest state
-        db_gen = get_db()
-        db = next(db_gen)
-        try:
-            # Re-query the list to get fresh data (avoid stale cache from merge)
-            current_id = self.current_supply_list.id
-            self.current_supply_list = db.query(SupplyList).get(current_id)
-            
-            if not self.current_supply_list:
-                # List might have been deleted?
-                self.current_list_label.setText("Liste introuvable")
-                self.close_btn.setEnabled(False)
-                return
-
-            status_text = "BROUILLON" if self.current_supply_list.status == 'draft' or self.current_supply_list.status is None else "CLÔTURÉE" if self.current_supply_list.status == 'closed' else "VALIDÉE"
-            self.current_list_label.setText(f"Liste active: {self.current_supply_list.title} ({status_text})")
-            
-            self.close_btn.setEnabled(self.current_supply_list.status == 'draft' or self.current_supply_list.status is None)
-
-            items = self.current_supply_list.items
-            
-            self.supply_table.setRowCount(len(items))
-            for row, item in enumerate(items):
-                self.supply_table.setItem(row, 0, QTableWidgetItem(item.designation_1))
-                self.supply_table.setItem(row, 1, QTableWidgetItem(item.barcode_1))
-                self.supply_table.setItem(row, 2, QTableWidgetItem(item.location_1))
-                self.supply_table.setItem(row, 3, QTableWidgetItem(str(item.expiry_date_1)))
-                self.supply_table.setItem(row, 4, QTableWidgetItem(item.barcode_2 or ""))
-                self.supply_table.setItem(row, 5, QTableWidgetItem(item.location_2 or ""))
-                self.supply_table.setItem(row, 6, QTableWidgetItem(str(item.expiry_date_2 or "")))
-                self.supply_table.setItem(row, 7, QTableWidgetItem(str(item.quantity)))
-                
-                # Actions: Delete (Only if draft)
-                # Treat None as draft for legacy lists
-                if self.current_supply_list.status == 'draft' or self.current_supply_list.status is None:
-                    del_btn = QPushButton()
-                    del_btn.setObjectName("TableActionBtn") # For styling
-                    del_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
-                    del_btn.setToolTip("Supprimer")
-                    del_btn.clicked.connect(lambda checked, i_id=item.id: self.delete_item(i_id))
-                    
-                    # Center the button
-                    widget = QWidget()
-                    layout = QHBoxLayout()
-                    layout.setContentsMargins(0,0,0,0)
-                    layout.addWidget(del_btn)
-                    layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-                    widget.setLayout(layout)
-                    
-                    self.supply_table.setCellWidget(row, 8, widget)
-        finally:
-            # Close the session (or let the generator finish)
+        # Use a fresh session to get the latest state
+        with get_db() as db:
+            if not db: return
             try:
-                next(db_gen)
-            except StopIteration:
-                pass
+                # Re-query the list to get fresh data (avoid stale cache from merge)
+                current_id = self.current_supply_list.id
+                self.current_supply_list = db.query(SupplyList).get(current_id)
+                
+                if not self.current_supply_list:
+                    # List might have been deleted?
+                    self.current_list_label.setText("Liste introuvable")
+                    self.close_btn.setEnabled(False)
+                    return
+
+                status_text = "BROUILLON" if self.current_supply_list.status == 'draft' or self.current_supply_list.status is None else "CLÔTURÉE" if self.current_supply_list.status == 'closed' else "VALIDÉE"
+                self.current_list_label.setText(f"Liste active: {self.current_supply_list.title} ({status_text})")
+                
+                self.close_btn.setEnabled(self.current_supply_list.status == 'draft' or self.current_supply_list.status is None)
+
+                items = self.current_supply_list.items
+                
+                self.supply_table.setRowCount(len(items))
+                for row, item in enumerate(items):
+                    self.supply_table.setItem(row, 0, QTableWidgetItem(item.designation_1))
+                    self.supply_table.setItem(row, 1, QTableWidgetItem(item.barcode_1))
+                    self.supply_table.setItem(row, 2, QTableWidgetItem(item.location_1))
+                    self.supply_table.setItem(row, 3, QTableWidgetItem(str(item.expiry_date_1)))
+                    self.supply_table.setItem(row, 4, QTableWidgetItem(item.barcode_2 or ""))
+                    self.supply_table.setItem(row, 5, QTableWidgetItem(item.location_2 or ""))
+                    self.supply_table.setItem(row, 6, QTableWidgetItem(str(item.expiry_date_2 or "")))
+                    self.supply_table.setItem(row, 7, QTableWidgetItem(str(item.quantity)))
+                    
+                    # Actions: Delete (Only if draft)
+                    # Treat None as draft for legacy lists
+                    if self.current_supply_list.status == 'draft' or self.current_supply_list.status is None:
+                        del_btn = QPushButton()
+                        del_btn.setObjectName("TableActionBtn") # For styling
+                        del_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+                        del_btn.setToolTip("Supprimer")
+                        del_btn.clicked.connect(lambda checked, i_id=item.id: self.delete_item(i_id))
+                        
+                        # Center the button
+                        widget = QWidget()
+                        layout = QHBoxLayout()
+                        layout.setContentsMargins(0,0,0,0)
+                        layout.addWidget(del_btn)
+                        layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                        widget.setLayout(layout)
+                        
+                        self.supply_table.setCellWidget(row, 8, widget)
+            except Exception as e:
+                logger.error(f"Error refreshing supply table: {e}")
 
     def delete_item(self, item_id):
         print(f"DEBUG: delete_item {item_id} (Type: {type(item_id)}). Status: {self.current_supply_list.status}")
@@ -461,18 +460,19 @@ class EntryWidget(QWidget):
         reply = QMessageBox.question(self, "Confirmer", "Supprimer cet article ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             print("DEBUG: User confirmed delete")
-            db = next(get_db())
-            item = db.query(SupplyListItem).filter(SupplyListItem.id == item_id).first()
-            if item:
-                db.delete(item)
-                db.commit()
-                print("DEBUG: Item deleted and committed")
-                self.refresh_supply_table()
-            else:
-                print("DEBUG: Item not found in DB. Existing IDs:")
-                all_items = db.query(SupplyListItem).all()
-                for i in all_items:
-                    print(f" - ID: {i.id}, ListID: {i.supply_list_id}")
+            with get_db() as db:
+                if not db: return
+                item = db.query(SupplyListItem).filter(SupplyListItem.id == item_id).first()
+                if item:
+                    db.delete(item)
+                    db.commit()
+                    print("DEBUG: Item deleted and committed")
+                    self.refresh_supply_table()
+                else:
+                    print("DEBUG: Item not found in DB. Existing IDs:")
+                    all_items = db.query(SupplyListItem).all()
+                    for i in all_items:
+                        print(f" - ID: {i.id}, ListID: {i.supply_list_id}")
         else:
             print("DEBUG: User cancelled delete")
 
@@ -488,12 +488,13 @@ class EntryWidget(QWidget):
         reply = QMessageBox.question(self, "Confirmer", "Vider toute la liste ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
             print("DEBUG: User confirmed clear")
-            db = next(get_db())
-            # Delete all items for this list
-            deleted_count = db.query(SupplyListItem).filter(SupplyListItem.supply_list_id == self.current_supply_list.id).delete()
-            db.commit()
-            print(f"DEBUG: Deleted {deleted_count} items and committed")
-            self.refresh_supply_table()
+            with get_db() as db:
+                if not db: return
+                # Delete all items for this list
+                deleted_count = db.query(SupplyListItem).filter(SupplyListItem.supply_list_id == self.current_supply_list.id).delete()
+                db.commit()
+                print(f"DEBUG: Deleted {deleted_count} items and committed")
+                self.refresh_supply_table()
         else:
             print("DEBUG: User cancelled clear")
 
@@ -503,25 +504,27 @@ class EntryWidget(QWidget):
             
         reply = QMessageBox.question(self, "Confirmer", "Voulez-vous clôturer cette liste ? Elle ne sera plus modifiable.", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            db = next(get_db())
-            self.current_supply_list = db.merge(self.current_supply_list)
-            self.current_supply_list.status = 'closed'
-            
-            # Update last_supply_date for all items in the list
-            for item in self.current_supply_list.items:
-                # Item 1
-                if item.product_code_1:
-                    nom1 = db.query(Nomenclature).filter(Nomenclature.code == item.product_code_1).first()
-                    if nom1:
-                        nom1.last_supply_date = datetime.now()
+
+            with get_db() as db:
+                if not db: return
+                self.current_supply_list = db.merge(self.current_supply_list)
+                self.current_supply_list.status = 'closed'
                 
-                # Item 2
-                if item.product_code_2:
-                    nom2 = db.query(Nomenclature).filter(Nomenclature.code == item.product_code_2).first()
-                    if nom2:
-                        nom2.last_supply_date = datetime.now()
-            
-            db.commit()
+                # Update last_supply_date for all items in the list
+                for item in self.current_supply_list.items:
+                    # Item 1
+                    if item.product_code_1:
+                        nom1 = db.query(Nomenclature).filter(Nomenclature.code == item.product_code_1).first()
+                        if nom1:
+                            nom1.last_supply_date = datetime.now()
+                    
+                    # Item 2
+                    if item.product_code_2:
+                        nom2 = db.query(Nomenclature).filter(Nomenclature.code == item.product_code_2).first()
+                        if nom2:
+                            nom2.last_supply_date = datetime.now()
+                
+                db.commit()
             self.refresh_supply_table()
             self.load_draft_lists() # Refresh combo
             QMessageBox.information(self, "Succès", "Liste clôturée. Elle est maintenant disponible pour validation.")
@@ -531,9 +534,10 @@ class EntryWidget(QWidget):
             QMessageBox.warning(self, "Attention", "Aucune liste active.")
             return
             
-        db = next(get_db())
-        self.current_supply_list = db.merge(self.current_supply_list)
-        items = self.current_supply_list.items
+        with get_db() as db:
+            if not db: return
+            self.current_supply_list = db.merge(self.current_supply_list)
+            items = self.current_supply_list.items
         
         if not items:
             QMessageBox.warning(self, "Attention", "La liste est vide.")

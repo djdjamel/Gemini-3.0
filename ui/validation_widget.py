@@ -55,14 +55,15 @@ class ValidationWidget(QWidget):
     def load_lists(self):
         self.list_combo.blockSignals(True)
         self.list_combo.clear()
-        db = next(get_db())
-        
-        # Filter: Only 'closed' or 'validated' lists
-        lists = db.query(SupplyList).filter(SupplyList.status.in_(['closed', 'validated'])).order_by(SupplyList.created_at.desc()).all()
-        
-        for lst in lists:
-            status_label = " (ARCHIVÉ)" if lst.status == 'validated' else ""
-            self.list_combo.addItem(f"{lst.title} - {lst.created_at.strftime('%Y-%m-%d %H:%M')}{status_label}", lst.id)
+        with get_db() as db:
+            if not db: return
+            
+            # Filter: Only 'closed' or 'validated' lists
+            lists = db.query(SupplyList).filter(SupplyList.status.in_(['closed', 'validated'])).order_by(SupplyList.created_at.desc()).all()
+            
+            for lst in lists:
+                status_label = " (ARCHIVÉ)" if lst.status == 'validated' else ""
+                self.list_combo.addItem(f"{lst.title} - {lst.created_at.strftime('%Y-%m-%d %H:%M')}{status_label}", lst.id)
             
         self.list_combo.blockSignals(False)
         if self.list_combo.count() > 0:
@@ -78,14 +79,15 @@ class ValidationWidget(QWidget):
         if not list_id:
             return
 
-        db = next(get_db())
-        self.current_list = db.query(SupplyList).filter(SupplyList.id == list_id).first()
-        
-        if self.current_list:
-            status_text = "VALIDÉE / ARCHIVÉE" if self.current_list.status == 'validated' else "EN ATTENTE DE VALIDATION"
-            self.info_label.setText(f"Statut: {status_text}")
-            self.validate_btn.setEnabled(self.current_list.status == 'closed')
-            self.load_items()
+        with get_db() as db:
+            if not db: return
+            self.current_list = db.query(SupplyList).filter(SupplyList.id == list_id).first()
+            
+            if self.current_list:
+                status_text = "VALIDÉE / ARCHIVÉE" if self.current_list.status == 'validated' else "EN ATTENTE DE VALIDATION"
+                self.info_label.setText(f"Statut: {status_text}")
+                self.validate_btn.setEnabled(self.current_list.status == 'closed')
+                self.load_items()
 
     def load_items(self):
         self.table.setRowCount(0)
@@ -144,10 +146,11 @@ class ValidationWidget(QWidget):
         self.table.item(row, 4).setText(new_val)
         
         # Update DB
-        db = next(get_db())
-        item_db = db.merge(item)
-        item_db.result = new_val
-        db.commit()
+        with get_db() as db:
+            if db:
+                item_db = db.merge(item)
+                item_db.result = new_val
+                db.commit()
 
     def mark_move(self, row, item):
         # Open Dialog to select new location
@@ -157,13 +160,14 @@ class ValidationWidget(QWidget):
         if dialog.exec() == QDialog.DialogCode.Accepted:
             new_loc_id = dialog.selected_location_id
             if new_loc_id:
-                db = next(get_db())
-                new_loc = db.query(Location).filter(Location.id == new_loc_id).first()
-                if new_loc:
-                    self.table.item(row, 4).setText(new_loc.label)
-                    item_db = db.merge(item)
-                    item_db.result = new_loc.label
-                    db.commit()
+                with get_db() as db:
+                    if db:
+                        new_loc = db.query(Location).filter(Location.id == new_loc_id).first()
+                        if new_loc:
+                            self.table.item(row, 4).setText(new_loc.label)
+                            item_db = db.merge(item)
+                            item_db.result = new_loc.label
+                            db.commit()
 
     def validate_list(self):
         if not self.current_list or self.current_list.status != 'closed':
@@ -173,68 +177,70 @@ class ValidationWidget(QWidget):
         if reply != QMessageBox.StandardButton.Yes:
             return
 
-        db = next(get_db())
-        self.current_list = db.merge(self.current_list)
-        
-        # Process items
-        for i in range(self.table.rowCount()):
-            result = self.table.item(i, 4).text()
-            # Logic:
-            # If 'S' or 'X' -> Delete product from location_1
-            # If result is a Location Label -> Move product to that location
-            # If 'V' -> Do nothing (Confirmed)
+        with get_db() as db:
+            if not db: return
             
-            # Note: We need to identify the specific product instance.
-            # SupplyListItem stores product_code_1 and barcode_1.
+            self.current_list = db.merge(self.current_list)
             
-            item = self.current_list.items[i]
-            
-            if result in ['S', 'X']:
-                # Delete logic
-                # Find product by barcode and location
-                prod = db.query(Product).join(Location).filter(Product.barcode == item.barcode_1, Location.label == item.location_1).first()
-                if prod:
-                    # Check if it's the last one
-                    code = prod.code
-                    count = db.query(Product).filter(Product.code == code).count()
+            # Process items
+            for i in range(self.table.rowCount()):
+                result = self.table.item(i, 4).text()
+                # Logic:
+                # If 'S' or 'X' -> Delete product from location_1
+                # If result is a Location Label -> Move product to that location
+                # If 'V' -> Do nothing (Confirmed)
+                
+                # Note: We need to identify the specific product instance.
+                # SupplyListItem stores product_code_1 and barcode_1.
+                
+                item = self.current_list.items[i]
+                
+                if result in ['S', 'X']:
+                    # Delete logic
+                    # Find product by barcode and location
+                    prod = db.query(Product).join(Location).filter(Product.barcode == item.barcode_1, Location.label == item.location_1).first()
+                    if prod:
+                        # Check if it's the last one
+                        code = prod.code
+                        count = db.query(Product).filter(Product.code == code).count()
 
-                    # Update Nomenclature last_edit_date
-                    if prod.nomenclature:
-                        prod.nomenclature.last_edit_date = datetime.now()
-                    
-                    db.delete(prod)
-
-                    if count == 1:
-                        # It was the last one
-                        designation = prod.nomenclature.designation if prod.nomenclature else "Inconnu"
+                        # Update Nomenclature last_edit_date
+                        if prod.nomenclature:
+                            prod.nomenclature.last_edit_date = datetime.now()
                         
-                        # Check if already in missing
-                        existing_missing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
-                        if not existing_missing:
-                            new_missing = MissingItem(
-                                product_code=code,
-                                source="Validation",
-                                reported_at=datetime.now()
-                            )
-                            db.add(new_missing)
-                            # We can't easily show a message for each item in a loop, maybe log it or just do it silently.
-                            # Or accumulate messages? For now, let's just do it.
-                            logger.info(f"Auto-added {designation} to missing list during validation.")
-            
-            elif result != 'V':
-                # Assume it's a location label
-                new_loc = db.query(Location).filter(Location.label == result).first()
-                if new_loc:
-                     prod = db.query(Product).join(Location).filter(Product.barcode == item.barcode_1, Location.label == item.location_1).first()
-                     if prod:
-                         prod.location_id = new_loc.id
-                         # Update Nomenclature last_edit_date
-                         if prod.nomenclature:
-                             prod.nomenclature.last_edit_date = datetime.now()
+                        db.delete(prod)
 
-        # Mark list as validated
-        self.current_list.status = 'validated'
-        db.commit()
+                        if count == 1:
+                            # It was the last one
+                            designation = prod.nomenclature.designation if prod.nomenclature else "Inconnu"
+                            
+                            # Check if already in missing
+                            existing_missing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
+                            if not existing_missing:
+                                new_missing = MissingItem(
+                                    product_code=code,
+                                    source="Validation",
+                                    reported_at=datetime.now()
+                                )
+                                db.add(new_missing)
+                                # We can't easily show a message for each item in a loop, maybe log it or just do it silently.
+                                # Or accumulate messages? For now, let's just do it.
+                                logger.info(f"Auto-added {designation} to missing list during validation.")
+                
+                elif result != 'V':
+                    # Assume it's a location label
+                    new_loc = db.query(Location).filter(Location.label == result).first()
+                    if new_loc:
+                         prod = db.query(Product).join(Location).filter(Product.barcode == item.barcode_1, Location.label == item.location_1).first()
+                         if prod:
+                             prod.location_id = new_loc.id
+                             # Update Nomenclature last_edit_date
+                             if prod.nomenclature:
+                                 prod.nomenclature.last_edit_date = datetime.now()
+
+            # Mark list as validated
+            self.current_list.status = 'validated'
+            db.commit()
         
         QMessageBox.information(self, "Succès", "Validation terminée.")
         self.load_lists()

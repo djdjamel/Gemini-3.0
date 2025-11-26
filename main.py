@@ -8,11 +8,23 @@ import logging
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO)
+logging.getLogger('comtypes').setLevel(logging.WARNING) # Suppress comtypes INFO logs
 logger = logging.getLogger(__name__)
 
 def main():
     # Start UI
     app = QApplication(sys.argv)
+    
+    # Single Instance Check
+    from PyQt6.QtCore import QLockFile, QDir
+    from PyQt6.QtWidgets import QMessageBox
+    
+    lock_file = QLockFile("gravity.lock")
+    if not lock_file.tryLock(100):
+        print("Lock failed! Another instance is running.")
+        QMessageBox.critical(None, "Erreur", "L'application est déjà en cours d'exécution.")
+        sys.exit(1)
+    print(f"Lock acquired on {lock_file.fileName()}")
     
     # Apply Modern Stylesheet
     from ui.styles import get_stylesheet

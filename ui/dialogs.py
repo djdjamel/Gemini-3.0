@@ -24,11 +24,12 @@ class ChangeLocationDialog(QDialog):
         self.setLayout(layout)
 
     def load_locations(self, current_id):
-        db = next(get_db())
-        locations = db.query(Location).order_by(Location.label).all()
-        for loc in locations:
-            if loc.id != current_id:
-                self.location_combo.addItem(loc.label, loc.id)
+        with get_db() as db:
+            if db:
+                locations = db.query(Location).order_by(Location.label).all()
+                for loc in locations:
+                    if loc.id != current_id:
+                        self.location_combo.addItem(loc.label, loc.id)
 
     def accept(self):
         self.selected_location_id = self.location_combo.currentData()

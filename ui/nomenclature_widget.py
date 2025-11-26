@@ -102,25 +102,27 @@ class NomenclatureWidget(QWidget):
         query_text = self.search_input.text().strip()
         
         try:
-            db = next(get_db())
-            query = db.query(Nomenclature)
-            
-            if query_text:
-                query = query.filter(
-                    (Nomenclature.code.ilike(f"%{query_text}%")) | 
-                    (Nomenclature.designation.ilike(f"%{query_text}%"))
-                )
-            
-            query = query.order_by(Nomenclature.designation.asc()).limit(500) # Limit for performance
-            results = query.all()
-            
-            self.table.setRowCount(len(results))
-            for r, row in enumerate(results):
-                self.table.setItem(r, 0, QTableWidgetItem(str(row.code)))
-                self.table.setItem(r, 1, QTableWidgetItem(str(row.designation)))
-                self.table.setItem(r, 2, QTableWidgetItem(str(row.last_edit_date or "")))
-            
-            self.status_label.setText(f"{len(results)} produits affichés.")
+            with get_db() as db:
+                if not db: return
+                
+                query = db.query(Nomenclature)
+                
+                if query_text:
+                    query = query.filter(
+                        (Nomenclature.code.ilike(f"%{query_text}%")) | 
+                        (Nomenclature.designation.ilike(f"%{query_text}%"))
+                    )
+                
+                query = query.order_by(Nomenclature.designation.asc()).limit(500) # Limit for performance
+                results = query.all()
+                
+                self.table.setRowCount(len(results))
+                for r, row in enumerate(results):
+                    self.table.setItem(r, 0, QTableWidgetItem(str(row.code)))
+                    self.table.setItem(r, 1, QTableWidgetItem(str(row.designation)))
+                    self.table.setItem(r, 2, QTableWidgetItem(str(row.last_edit_date or "")))
+                
+                self.status_label.setText(f"{len(results)} produits affichés.")
             
         except Exception as e:
             logger.error(f"Error loading nomenclature: {e}")
@@ -142,14 +144,15 @@ class NomenclatureWidget(QWidget):
             
             if new_name and new_name != current_name:
                 try:
-                    db = next(get_db())
-                    nom = db.query(Nomenclature).filter(Nomenclature.code == code).first()
-                    if nom:
-                        nom.designation = new_name
-                        nom.last_edit_date = datetime.now()
-                        db.commit()
-                        self.load_data()
-                        QMessageBox.information(self, "Succès", "Désignation mise à jour.")
+                    with get_db() as db:
+                        if db:
+                            nom = db.query(Nomenclature).filter(Nomenclature.code == code).first()
+                            if nom:
+                                nom.designation = new_name
+                                nom.last_edit_date = datetime.now()
+                                db.commit()
+                                self.load_data()
+                                QMessageBox.information(self, "Succès", "Désignation mise à jour.")
                 except Exception as e:
                     QMessageBox.critical(self, "Erreur", f"Erreur lors de la mise à jour: {e}")
 
@@ -165,34 +168,38 @@ class NomenclatureWidget(QWidget):
         
         try:
             # 1. Get Local Codes
-            db = next(get_db())
-            local_codes = [r[0] for r in db.query(Nomenclature.code).all()]
-            local_set = set(local_codes)
-            
-            # 2. Get XP Codes
-            conn = get_xpertpharm_connection()
-            if not conn:
+            with get_db() as db:
+                if not db:
+                    progress.close()
+                    return
+                    
+                local_codes = [r[0] for r in db.query(Nomenclature.code).all()]
+                local_set = set(local_codes)
+                
+                # 2. Get XP Codes
+                conn = get_xpertpharm_connection()
+                if not conn:
+                    progress.close()
+                    QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
+                    return
+                    
+                cursor = conn.cursor()
+                cursor.execute("SELECT CODE_PRODUIT FROM dbo.View_STK_PRODUITS")
+                xp_codes = [r[0] for r in cursor.fetchall()]
+                xp_set = set(xp_codes)
+                conn.close()
+                
+                # 3. Diff
+                obsolete_codes = local_set - xp_set
+                
                 progress.close()
-                QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
-                return
                 
-            cursor = conn.cursor()
-            cursor.execute("SELECT CODE_PRODUIT FROM dbo.View_STK_PRODUITS")
-            xp_codes = [r[0] for r in cursor.fetchall()]
-            xp_set = set(xp_codes)
-            conn.close()
-            
-            # 3. Diff
-            obsolete_codes = local_set - xp_set
-            
-            progress.close()
-            
-            if not obsolete_codes:
-                QMessageBox.information(self, "Résultat", "Aucun code obsolète trouvé.")
-                return
-                
-            # Show Dialog
-            self.show_results_dialog("Codes Obsolètes", ["Code", "Désignation (Local)"], obsolete_codes, db)
+                if not obsolete_codes:
+                    QMessageBox.information(self, "Résultat", "Aucun code obsolète trouvé.")
+                    return
+                    
+                # Show Dialog
+                self.show_results_dialog("Codes Obsolètes", ["Code", "Désignation (Local)"], obsolete_codes, db)
             
         except Exception as e:
             progress.close()
@@ -209,45 +216,49 @@ class NomenclatureWidget(QWidget):
         
         try:
             # 1. Get Local Data
-            db = next(get_db())
-            local_noms = db.query(Nomenclature).all()
-            local_map = {n.code: n for n in local_noms}
-            
-            # 2. Get XP Data
-            conn = get_xpertpharm_connection()
-            if not conn:
-                progress.close()
-                QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
-                return
+            with get_db() as db:
+                if not db:
+                    progress.close()
+                    return
+                    
+                local_noms = db.query(Nomenclature).all()
+                local_map = {n.code: n for n in local_noms}
                 
-            cursor = conn.cursor()
-            cursor.execute("SELECT CODE_PRODUIT, DESIGNATION FROM dbo.View_STK_PRODUITS")
-            xp_data = cursor.fetchall()
-            conn.close()
-            
-            updates = []
-            
-            for row in xp_data:
-                code = row[0]
-                xp_name = row[1]
+                # 2. Get XP Data
+                conn = get_xpertpharm_connection()
+                if not conn:
+                    progress.close()
+                    QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
+                    return
+                    
+                cursor = conn.cursor()
+                cursor.execute("SELECT CODE_PRODUIT, DESIGNATION FROM dbo.View_STK_PRODUITS")
+                xp_data = cursor.fetchall()
+                conn.close()
                 
-                if code in local_map:
-                    local_nom = local_map[code]
-                    if local_nom.designation != xp_name:
-                        # Update
-                        old_name = local_nom.designation
-                        local_nom.designation = xp_name
-                        local_nom.last_edit_date = datetime.now()
-                        updates.append((code, old_name, xp_name))
-            
-            if updates:
-                db.commit()
-                progress.close()
-                self.show_sync_results(updates)
-                self.load_data()
-            else:
-                progress.close()
-                QMessageBox.information(self, "Résultat", "Tous les noms sont à jour.")
+                updates = []
+                
+                for row in xp_data:
+                    code = row[0]
+                    xp_name = row[1]
+                    
+                    if code in local_map:
+                        local_nom = local_map[code]
+                        if local_nom.designation != xp_name:
+                            # Update
+                            old_name = local_nom.designation
+                            local_nom.designation = xp_name
+                            local_nom.last_edit_date = datetime.now()
+                            updates.append((code, old_name, xp_name))
+                
+                if updates:
+                    db.commit()
+                    progress.close()
+                    self.show_sync_results(updates)
+                    self.load_data()
+                else:
+                    progress.close()
+                    QMessageBox.information(self, "Résultat", "Tous les noms sont à jour.")
                 
         except Exception as e:
             progress.close()

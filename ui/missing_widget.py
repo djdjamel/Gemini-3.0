@@ -73,73 +73,79 @@ class MissingWidget(QWidget):
         if prod_data:
             code = prod_data['CODE_PRODUIT']
         
-        db = next(get_db())
-        new_item = MissingItem(
-            product_code=code,
-            source="Manquant",
-            reported_at=datetime.now()
-        )
-        
-        try:
-            db.add(new_item)
-            db.commit()
-            self.load_items()
-            self.code_input.clear()
-        except Exception as e:
-            QMessageBox.critical(self, "Erreur", f"Erreur: {e}")
+        with get_db() as db:
+            if not db: return
+            
+            new_item = MissingItem(
+                product_code=code,
+                source="Manquant",
+                reported_at=datetime.now()
+            )
+            
+            try:
+                db.add(new_item)
+                db.commit()
+                self.load_items()
+                self.code_input.clear()
+            except Exception as e:
+                QMessageBox.critical(self, "Erreur", f"Erreur: {e}")
 
     def load_items(self):
         self.table.setRowCount(0)
-        db = next(get_db())
-        # Join with Nomenclature to get designation
-        # We use outerjoin in case it's missing from Nomenclature
-        from database.models import Nomenclature
-        items = db.query(MissingItem).outerjoin(Nomenclature, MissingItem.product_code == Nomenclature.code).order_by(MissingItem.reported_at.desc()).all()
-        
-        self.table.setRowCount(len(items))
-        for row, item in enumerate(items):
-            designation = item.nomenclature.designation if item.nomenclature else "Inconnu"
+        with get_db() as db:
+            if not db: return
             
-            self.table.setItem(row, 0, QTableWidgetItem(item.product_code))
-            self.table.setItem(row, 1, QTableWidgetItem(designation))
-            self.table.setItem(row, 2, QTableWidgetItem(str(item.reported_at)))
+            # Join with Nomenclature to get designation
+            # We use outerjoin in case it's missing from Nomenclature
+            from database.models import Nomenclature
+            items = db.query(MissingItem).outerjoin(Nomenclature, MissingItem.product_code == Nomenclature.code).order_by(MissingItem.reported_at.desc()).all()
             
-            btn = QPushButton()
-            btn.setObjectName("TableActionBtn")
-            btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
-            btn.setToolTip("Supprimer")
-            btn.clicked.connect(lambda checked, i_id=item.id: self.delete_item(i_id))
-            
-            # Center the button
-            widget = QWidget()
-            layout = QHBoxLayout()
-            layout.setContentsMargins(0,0,0,0)
-            layout.addWidget(btn)
-            layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            widget.setLayout(layout)
-            
-            self.table.setCellWidget(row, 3, widget)
+            self.table.setRowCount(len(items))
+            for row, item in enumerate(items):
+                designation = item.nomenclature.designation if item.nomenclature else "Inconnu"
+                
+                self.table.setItem(row, 0, QTableWidgetItem(item.product_code))
+                self.table.setItem(row, 1, QTableWidgetItem(designation))
+                self.table.setItem(row, 2, QTableWidgetItem(str(item.reported_at)))
+                
+                btn = QPushButton()
+                btn.setObjectName("TableActionBtn")
+                btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
+                btn.setToolTip("Supprimer")
+                btn.clicked.connect(lambda checked, i_id=item.id: self.delete_item(i_id))
+                
+                # Center the button
+                widget = QWidget()
+                layout = QHBoxLayout()
+                layout.setContentsMargins(0,0,0,0)
+                layout.addWidget(btn)
+                layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                widget.setLayout(layout)
+                
+                self.table.setCellWidget(row, 3, widget)
 
     def delete_item(self, item_id):
-        db = next(get_db())
-        item = db.query(MissingItem).filter(MissingItem.id == item_id).first()
-        if item:
-            db.delete(item)
-            db.commit()
-            self.load_items()
+        with get_db() as db:
+            if not db: return
+            item = db.query(MissingItem).filter(MissingItem.id == item_id).first()
+            if item:
+                db.delete(item)
+                db.commit()
+                self.load_items()
 
     def delete_all_items(self):
         reply = QMessageBox.question(self, "Confirmer", "Voulez-vous vraiment supprimer TOUS les produits de la liste des manquants ?", QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if reply == QMessageBox.StandardButton.Yes:
-            db = next(get_db())
-            try:
-                db.query(MissingItem).delete()
-                db.commit()
-                self.load_items()
-                QMessageBox.information(self, "Succès", "La liste des manquants a été vidée.")
-            except Exception as e:
-                db.rollback()
-                QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression : {e}")
+            with get_db() as db:
+                if not db: return
+                try:
+                    db.query(MissingItem).delete()
+                    db.commit()
+                    self.load_items()
+                    QMessageBox.information(self, "Succès", "La liste des manquants a été vidée.")
+                except Exception as e:
+                    db.rollback()
+                    QMessageBox.critical(self, "Erreur", f"Erreur lors de la suppression : {e}")
 
     def load_lots_for_selected(self):
         self.lots_table.setRowCount(0)

@@ -119,11 +119,11 @@ class InvoiceWidget(QWidget):
             # Clean barcodes (strip whitespace)
             barcodes = [str(b).strip() for b in barcodes]
             
-            db = next(get_db())
-            if db:
-                # Query Product table where barcode is in the list
-                products = db.query(Product.barcode).filter(Product.barcode.in_(barcodes)).all()
-                existing_barcodes = {p.barcode for p in products}
+            with get_db() as db:
+                if db:
+                    # Query Product table where barcode is in the list
+                    products = db.query(Product.barcode).filter(Product.barcode.in_(barcodes)).all()
+                    existing_barcodes = {p.barcode for p in products}
         
         for row, item in enumerate(details):
             # Produit (DESIGNATION_PRODUIT)

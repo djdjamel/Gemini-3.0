@@ -132,62 +132,63 @@ class DormantWidget(QWidget):
         QApplication.processEvents()
         
         try:
-            db = next(get_db())
-            
-            # Calculate cutoff date
-            cutoff_date = datetime.now() - timedelta(days=min_days)
-            
-            # Query:
-            # Select Nomenclature where field <= cutoff OR field IS NULL
-            # Join Product to count locations
-            
-            # Dynamic field selection
-            target_field = getattr(Nomenclature, field_name)
-            
-            from sqlalchemy import or_
-            
-            query = db.query(
-                Nomenclature.code,
-                Nomenclature.designation,
-                target_field,
-                func.count(Product.id).label("location_count")
-            ).outerjoin(Product, Nomenclature.code == Product.code)\
-             .filter(or_(target_field <= cutoff_date, target_field == None))\
-             .group_by(Nomenclature.id)\
-             .having(func.count(Product.id) > 0)\
-             .order_by(target_field.asc().nullsfirst()) # Nulls (Never) first
-            
-            results = query.all()
-            
-            self.table.setRowCount(len(results))
-            
-            for r, row in enumerate(results):
-                # row: (code, designation, date, count)
+            with get_db() as db:
+                if not db: return
                 
-                code = row[0]
-                designation = row[1]
-                date_val = row[2]
-                loc_count = row[3]
+                # Calculate cutoff date
+                cutoff_date = datetime.now() - timedelta(days=min_days)
                 
-                # Calculate days inactive
-                if date_val:
-                    days_inactive = (datetime.now() - date_val).days
-                    days_str = str(days_inactive)
-                else:
-                    days_str = "Jamais"
+                # Query:
+                # Select Nomenclature where field <= cutoff OR field IS NULL
+                # Join Product to count locations
                 
-                self.table.setItem(r, 0, QTableWidgetItem(str(code)))
-                self.table.setItem(r, 1, QTableWidgetItem(str(designation)))
+                # Dynamic field selection
+                target_field = getattr(Nomenclature, field_name)
                 
-                days_item = QTableWidgetItem(days_str)
-                days_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(r, 2, days_item)
+                from sqlalchemy import or_
                 
-                count_item = QTableWidgetItem(str(loc_count))
-                count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
-                self.table.setItem(r, 3, count_item)
-            
-            self.status_label.setText(f"{len(results)} produits trouvés.")
+                query = db.query(
+                    Nomenclature.code,
+                    Nomenclature.designation,
+                    target_field,
+                    func.count(Product.id).label("location_count")
+                ).outerjoin(Product, Nomenclature.code == Product.code)\
+                 .filter(or_(target_field <= cutoff_date, target_field == None))\
+                 .group_by(Nomenclature.id)\
+                 .having(func.count(Product.id) > 0)\
+                 .order_by(target_field.asc().nullsfirst()) # Nulls (Never) first
+                
+                results = query.all()
+                
+                self.table.setRowCount(len(results))
+                
+                for r, row in enumerate(results):
+                    # row: (code, designation, date, count)
+                    
+                    code = row[0]
+                    designation = row[1]
+                    date_val = row[2]
+                    loc_count = row[3]
+                    
+                    # Calculate days inactive
+                    if date_val:
+                        days_inactive = (datetime.now() - date_val).days
+                        days_str = str(days_inactive)
+                    else:
+                        days_str = "Jamais"
+                    
+                    self.table.setItem(r, 0, QTableWidgetItem(str(code)))
+                    self.table.setItem(r, 1, QTableWidgetItem(str(designation)))
+                    
+                    days_item = QTableWidgetItem(days_str)
+                    days_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setItem(r, 2, days_item)
+                    
+                    count_item = QTableWidgetItem(str(loc_count))
+                    count_item.setTextAlignment(Qt.AlignmentFlag.AlignCenter)
+                    self.table.setItem(r, 3, count_item)
+                
+                self.status_label.setText(f"{len(results)} produits trouvés.")
             
         except Exception as e:
             logger.error(f"Search error: {e}")

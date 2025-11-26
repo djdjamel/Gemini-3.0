@@ -82,6 +82,21 @@ class MissingItem(Base):
     product_code = Column(String(50))
     # designation removed, linked via nomenclature
     source = Column(String(50), default='Inconnu')
+    quantity = Column(Integer, default=1)
     reported_at = Column(DateTime, default=datetime.now)
 
     nomenclature = relationship("Nomenclature", primaryjoin="foreign(MissingItem.product_code) == Nomenclature.code", viewonly=True)
+
+class Notification(Base):
+    __tablename__ = 'notifications'
+    id = Column(Integer, primary_key=True)
+    sender_station = Column(String(50))
+    target_role = Column(String(50), default='SERVER')
+    product_code = Column(String(50))
+    product_name = Column(String(255))
+    quantity = Column(Integer)
+    message = Column(String(500))
+    is_urgent = Column(Boolean, default=False)
+    status = Column(String(20), default='pending') # pending, confirmed, rejected, received
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)

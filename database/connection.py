@@ -27,9 +27,13 @@ def init_db():
         from populate_locations import populate_locations
         populate_locations()
 
+from contextlib import contextmanager
+
+@contextmanager
 def get_db():
     if not SessionLocal:
-        return None
+        yield None
+        return
     db = SessionLocal()
     try:
         yield db

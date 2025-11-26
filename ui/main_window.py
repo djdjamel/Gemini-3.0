@@ -1,5 +1,11 @@
-from PyQt6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel
+from PyQt6.QtWidgets import QMainWindow, QTabWidget, QWidget, QVBoxLayout, QLabel, QMessageBox
 from PyQt6.QtCore import Qt, QTimer
+from ui.notification_overlay import NotificationOverlay
+from ui.floating_search import FloatingSearchWidget
+from database.connection import get_db
+from database.models import Notification
+from config import config
+import logging
 
 class MainWindow(QMainWindow):
     def __init__(self, splash=None):
@@ -9,6 +15,24 @@ class MainWindow(QMainWindow):
 
         self.tabs = QTabWidget()
         self.setCentralWidget(self.tabs)
+        
+        # Notification System
+        self.active_overlays = []
+        self.notification_timer = QTimer(self)
+        self.notification_timer.timeout.connect(self.check_notifications)
+        self.notification_timer.start(5000) # Check every 5 seconds
+        
+        # Floating Search Widget
+        self.floating_search = FloatingSearchWidget(self)
+        self.floating_search.hide() # Hidden by default
+        
+        # Toggle Button (e.g., F12 shortcut or just a button in UI? User didn't specify.
+        # Let's add a shortcut F12)
+        from PyQt6.QtGui import QAction, QKeySequence
+        self.toggle_search_action = QAction("Recherche Comptoir", self)
+        self.toggle_search_action.setShortcut(QKeySequence("F12"))
+        self.toggle_search_action.triggered.connect(self.toggle_floating_search)
+        self.addAction(self.toggle_search_action)
         
         # Initialize Tabs synchronously
         self.create_tabs(splash)
@@ -88,15 +112,88 @@ class MainWindow(QMainWindow):
         self.nomenclature_tab = NomenclatureWidget()
         self.tabs.addTab(self.nomenclature_tab, "Nomenclature")
 
-        # 5. Paramètres
+        # 13. Paramètres
         update_splash("Chargement du module Paramètres...")
         from ui.settings_widget import SettingsWidget
         self.settings_tab = SettingsWidget()
         self.tabs.addTab(self.settings_tab, "Paramètres")
 
-    def setup_placeholder_tab(self, tab, name):
-        layout = QVBoxLayout()
-        label = QLabel(f"{name} Module - Coming Soon")
-        label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        layout.addWidget(label)
-        tab.setLayout(layout)
+        # 14. Messages
+        update_splash("Chargement du module Messages...")
+        from ui.messages_widget import MessagesWidget
+        self.messages_tab = MessagesWidget()
+        self.tabs.addTab(self.messages_tab, "Messages")
+
+    def check_notifications(self):
+        try:
+            with get_db() as db:
+                if not db: return
+                
+                # Server Logic: Check for pending requests
+                if config.IS_SERVER:
+                    pending = db.query(Notification).filter(Notification.status == 'pending').all()
+                    for notif in pending:
+                        # Check if already showing this notif (simple check)
+                        if not any(o.notification_data['id'] == notif.id for o in self.active_overlays):
+                            self.show_notification(notif)
+                
+                # Client Logic: Check for responses to my requests
+                my_station = config.STATION_NAME
+                if my_station:
+                    responses = db.query(Notification).filter(
+                        Notification.sender_station == my_station,
+                        Notification.status.in_(['confirmed', 'rejected'])
+                    ).all()
+                    
+                    for resp in responses:
+                        msg = f"Votre demande pour '{resp.product_name}' a été {'CONFIRMÉE' if resp.status == 'confirmed' else 'REJETÉE'}."
+                        QMessageBox.information(self, "Réponse Serveur", msg)
+                        
+                        # Mark as seen (closed)
+                        resp.status = 'closed'
+                        db.commit()
+
+        except Exception as e:
+            logging.error(f"Notification check error: {e}")
+
+    def show_notification(self, notif):
+        data = {
+            'id': notif.id,
+            'sender_station': notif.sender_station,
+            'product_name': notif.product_name,
+            'quantity': notif.quantity,
+            'message': notif.message,
+            'is_urgent': notif.is_urgent
+        }
+        overlay = NotificationOverlay(data, self)
+        overlay.responded.connect(self.handle_notification_response)
+        overlay.show()
+        
+        # Stack overlays
+        offset = len(self.active_overlays) * 20
+        overlay.move(100 + offset, 100 + offset)
+        
+        self.active_overlays.append(overlay)
+
+    def handle_notification_response(self, notif_id, action):
+        # Remove from active list
+        self.active_overlays = [o for o in self.active_overlays if o.notification_data['id'] != notif_id]
+        
+        try:
+            with get_db() as db:
+                if db:
+                    notif = db.query(Notification).filter(Notification.id == notif_id).first()
+                    if notif:
+                        notif.status = action
+                        db.commit()
+        except Exception as e:
+            logging.error(f"Error updating notification: {e}")
+
+    def toggle_floating_search(self):
+        if self.floating_search.isVisible():
+            self.floating_search.hide()
+        else:
+            self.floating_search.show()
+            self.floating_search.search_input.setFocus()
+            # Center on screen or position nicely
+            # self.floating_search.move(100, 100)
