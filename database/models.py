@@ -37,6 +37,7 @@ class Product(Base):
     barcode = Column(String(50), nullable=False) # Code Barre Lot
     expiry_date = Column(Date, nullable=True)
     location_id = Column(Integer, ForeignKey('locations.id'))
+    cleaning = Column(Boolean, default=False)
     
     location = relationship("Location", back_populates="products")
     nomenclature = relationship("Nomenclature", back_populates="products", foreign_keys=[code])
@@ -84,6 +85,7 @@ class MissingItem(Base):
     source = Column(String(50), default='Inconnu')
     quantity = Column(Integer, default=1)
     reported_at = Column(DateTime, default=datetime.now)
+    is_deleted = Column(Boolean, default=False)
 
     nomenclature = relationship("Nomenclature", primaryjoin="foreign(MissingItem.product_code) == Nomenclature.code", viewonly=True)
 

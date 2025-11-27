@@ -1,8 +1,9 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, 
-    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QStyle, QStyledItemDelegate
+    QTableWidget, QTableWidgetItem, QPushButton, QMessageBox, QHeaderView, QStyle, QStyledItemDelegate,
+    QDateEdit
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QDate
 from PyQt6.QtGui import QColor
 from database.connection import get_db, get_product_from_xpertpharm, get_lots_by_product_code
 from database.models import MissingItem
@@ -44,6 +45,29 @@ class MissingWidget(QWidget):
         top_layout.addWidget(delete_all_btn)
         
         layout.addLayout(top_layout)
+        
+        # Filters
+        filter_layout = QHBoxLayout()
+        filter_layout.addWidget(QLabel("Du:"))
+        self.date_from = QDateEdit()
+        self.date_from.setCalendarPopup(True)
+        self.date_from.setDate(QDate.currentDate().addDays(-7))
+        self.date_from.dateChanged.connect(self.load_items)
+        filter_layout.addWidget(self.date_from)
+        
+        filter_layout.addWidget(QLabel("Au:"))
+        self.date_to = QDateEdit()
+        self.date_to.setCalendarPopup(True)
+        self.date_to.setDate(QDate.currentDate())
+        self.date_to.dateChanged.connect(self.load_items)
+        filter_layout.addWidget(self.date_to)
+        
+        refresh_btn = QPushButton("Actualiser")
+        refresh_btn.clicked.connect(self.load_items)
+        filter_layout.addWidget(refresh_btn)
+        
+        filter_layout.addStretch()
+        layout.addLayout(filter_layout)
 
         # Table
         self.table = QTableWidget()
@@ -109,13 +133,30 @@ class MissingWidget(QWidget):
         with get_db() as db:
             if not db: return
             
+            # Date Filter
+            d_from = self.date_from.date().toPyDate()
+            d_to = self.date_to.date().addDays(1).toPyDate() # Include end date
+            
             # Join with Nomenclature to get designation
             # We use outerjoin in case it's missing from Nomenclature
             from database.models import Nomenclature
-            items = db.query(MissingItem).outerjoin(Nomenclature, MissingItem.product_code == Nomenclature.code).order_by(MissingItem.reported_at.desc()).all()
             
-            self.table.setRowCount(len(items))
-            for row, item in enumerate(items):
+            # Filter by date range and not deleted
+            items = db.query(MissingItem).outerjoin(Nomenclature, MissingItem.product_code == Nomenclature.code)\
+                .filter(MissingItem.reported_at >= d_from, MissingItem.reported_at < d_to)\
+                .filter(MissingItem.is_deleted == False)\
+                .order_by(MissingItem.reported_at.asc()).all()
+            
+            # Deduplicate: Keep only the latest item for each product_code
+            latest_items_map = {}
+            for item in items:
+                latest_items_map[item.product_code] = item
+            
+            # Convert back to list and sort by date desc for display
+            unique_items = sorted(latest_items_map.values(), key=lambda x: x.reported_at, reverse=True)
+            
+            self.table.setRowCount(len(unique_items))
+            for row, item in enumerate(unique_items):
                 designation = item.nomenclature.designation if item.nomenclature else "Inconnu"
                 
                 self.table.setItem(row, 0, QTableWidgetItem(item.product_code))
@@ -132,7 +173,8 @@ class MissingWidget(QWidget):
                 btn.setObjectName("TableActionBtn")
                 btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_TrashIcon))
                 btn.setToolTip("Supprimer")
-                btn.clicked.connect(lambda checked, i_id=item.id: self.delete_item(i_id))
+                # Pass product_code instead of item_id to delete all instances
+                btn.clicked.connect(lambda checked, p_code=item.product_code: self.delete_item(p_code))
                 
                 # Center the button
                 widget = QWidget()
@@ -144,12 +186,18 @@ class MissingWidget(QWidget):
                 
                 self.table.setCellWidget(row, 3, widget)
 
-    def delete_item(self, item_id):
+    def delete_item(self, product_code):
+        # Soft delete all active items with this product code
         with get_db() as db:
             if not db: return
-            item = db.query(MissingItem).filter(MissingItem.id == item_id).first()
-            if item:
-                db.delete(item)
+            
+            # Find all non-deleted items with this product code
+            items = db.query(MissingItem).filter(MissingItem.product_code == product_code, MissingItem.is_deleted == False).all()
+            
+            if items:
+                for item in items:
+                    item.is_deleted = True
+                
                 db.commit()
                 self.load_items()
 
@@ -159,7 +207,8 @@ class MissingWidget(QWidget):
             with get_db() as db:
                 if not db: return
                 try:
-                    db.query(MissingItem).delete()
+                    # Soft delete all
+                    db.query(MissingItem).filter(MissingItem.is_deleted == False).update({MissingItem.is_deleted: True})
                     db.commit()
                     self.load_items()
                     QMessageBox.information(self, "Succès", "La liste des manquants a été vidée.")
