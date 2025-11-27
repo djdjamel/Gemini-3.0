@@ -65,19 +65,19 @@ class InventoryWidget(QWidget):
         
         self.btn_start_cleaning = QPushButton("Créer")
         self.btn_start_cleaning.setToolTip("Lancer un nettoyage de stock")
-        self.btn_start_cleaning.setFixedSize(60, 25)
+        self.btn_start_cleaning.setFixedSize(90, 30)
         self.btn_start_cleaning.clicked.connect(self.start_cleaning)
         cleaning_layout.addWidget(self.btn_start_cleaning)
         
         self.btn_verify_cleaning = QPushButton("Vérifier")
         self.btn_verify_cleaning.setToolTip("Vérifier les manquants")
-        self.btn_verify_cleaning.setFixedSize(60, 25)
+        self.btn_verify_cleaning.setFixedSize(90, 30)
         self.btn_verify_cleaning.clicked.connect(self.verify_cleaning)
         cleaning_layout.addWidget(self.btn_verify_cleaning)
         
         self.btn_close_cleaning = QPushButton("Clôturer")
         self.btn_close_cleaning.setToolTip("Supprimer les manquants et terminer")
-        self.btn_close_cleaning.setFixedSize(60, 25)
+        self.btn_close_cleaning.setFixedSize(90, 30)
         self.btn_close_cleaning.clicked.connect(self.close_cleaning)
         self.btn_close_cleaning.setEnabled(False)
         cleaning_layout.addWidget(self.btn_close_cleaning)
