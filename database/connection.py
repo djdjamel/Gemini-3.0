@@ -151,3 +151,39 @@ def get_invoice_details(code_doc):
         return []
     finally:
         conn.close()
+
+def check_newer_barcodes(barcode, product_code, created_on):
+    """Check if there are newer barcodes for the same product.
+    
+    Args:
+        barcode: The scanned barcode
+        product_code: The product code
+        created_on: The creation date of the scanned barcode
+        
+    Returns:
+        int: Count of newer barcodes (with created_on >= scanned barcode's date)
+    """
+    conn = get_xpertpharm_connection()
+    if not conn:
+        return 0
+    
+    query = """
+    SELECT COUNT(*) as newer_count
+    FROM [XPERTPHARM5_7091_BOURENANE].[dbo].[STK_STOCK]
+    WHERE [CODE_PRODUIT] = ? 
+    AND [CREATED_ON] >= ?
+    AND [CODE_BARRE_LOT] != ?
+    """
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query, (product_code, created_on, barcode))
+        row = cursor.fetchone()
+        if row:
+            return row[0]
+        return 0
+    except Exception as e:
+        logger.error(f"Error checking newer barcodes: {e}")
+        return 0
+    finally:
+        conn.close()

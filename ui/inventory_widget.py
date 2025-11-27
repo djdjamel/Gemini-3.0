@@ -159,6 +159,18 @@ class InventoryWidget(QWidget):
             if not product_data:
                 self.show_error("Erreur", "Code à barre non reconu.")
                 return
+            
+            # Check for newer barcodes (same product code, created_on >= current)
+            from database.connection import check_newer_barcodes
+            created_on = product_data.get('CREATED_ON')
+            product_code = product_data.get('CODE_PRODUIT')
+            
+            if created_on and product_code:
+                newer_count = check_newer_barcodes(barcode, product_code, created_on)
+                if newer_count > 0:
+                    warning_msg = f"Attention ! {newer_count} code à barre plus récent détecté pour ce produit."
+                    self.speak(warning_msg)
+                    QMessageBox.warning(self, "Avertissement", warning_msg)
 
             # Create/Update Nomenclature
             nomenclature = db.query(Nomenclature).filter(Nomenclature.code == product_data['CODE_PRODUIT']).first()
