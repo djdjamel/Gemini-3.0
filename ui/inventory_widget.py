@@ -37,6 +37,16 @@ class InventoryWidget(QWidget):
         self.cleaning_mode = False
         self.init_ui()
         self.load_locations()
+        self.check_active_cleaning_session()
+
+    def check_active_cleaning_session(self):
+        with get_db() as db:
+            if not db: return
+            # Check if any product has cleaning=True
+            active_cleaning = db.query(Product).filter(Product.cleaning == True).first()
+            if active_cleaning:
+                self.cleaning_mode = True
+                self.update_cleaning_ui()
 
     def init_ui(self):
         layout = QVBoxLayout()
