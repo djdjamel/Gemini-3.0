@@ -277,7 +277,7 @@ class EntryWidget(QWidget):
             
             def create_colored_item(text):
                 item = QTableWidgetItem(str(text or ""))
-                item.setBackground(QColor("#ffebee")) # Light Red
+                item.setBackground(QColor("#7c2d12")) # Dark Amber for catalog items
                 return item
 
             item_desig = create_colored_item(designation)

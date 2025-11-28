@@ -165,7 +165,7 @@ class MissingWidget(QWidget):
                 
                 # Highlight "Comptoir" items
                 if item.source == "Comptoir":
-                    color = QColor("#fff9c4") # Light Yellow
+                    color = QColor("#115e59") # Dark Teal for Comptoir items
                     for col in range(3):
                         self.table.item(row, col).setBackground(color)
                 

@@ -167,7 +167,7 @@ class SearchWidget(QWidget):
             # Helper to set item with background color
             def create_colored_item(text):
                 item = QTableWidgetItem(str(text or ""))
-                item.setBackground(QColor("#ffebee")) # Light Red / Soft
+                item.setBackground(QColor("#7c2d12")) # Dark Amber for catalog items
                 # Mark as catalog item
                 data = {
                     "CODE_PRODUIT": code,
