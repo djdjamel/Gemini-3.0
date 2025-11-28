@@ -4,6 +4,7 @@ from PyQt6.QtCore import Qt, QStringListModel
 from PyQt6.QtGui import QColor, QFont
 from database.connection import get_db, get_xpertpharm_connection
 from database.models import Nomenclature, MissingItem, Product
+from database.cache import ProductCache
 from ui.quantity_dialog import QuantityDialog
 from datetime import datetime
 
@@ -18,6 +19,12 @@ class FloatingSearchWidget(QWidget):
         self.offset = None
         
         self.init_ui()
+        self.load_completer_data()
+        
+        # Connect to cache signal
+        ProductCache.instance().cache_updated.connect(self.on_cache_updated)
+
+    def on_cache_updated(self):
         self.load_completer_data()
 
     def init_ui(self):
@@ -58,17 +65,16 @@ class FloatingSearchWidget(QWidget):
         self.container.setGraphicsEffect(shadow)
 
     def load_completer_data(self):
-        # Load all nomenclature names from XpertPharm for autocomplete
+        # Load all nomenclature names from Cache for autocomplete
         try:
-            conn = get_xpertpharm_connection()
-            if conn:
-                cursor = conn.cursor()
-                cursor.execute("SELECT DESIGNATION_PRODUIT FROM dbo.View_STK_PRODUITS WHERE ACTIF = 1")
-                results = cursor.fetchall()
-                self.names = [r[0] for r in results if r[0]]
-                conn.close()
+            cache = ProductCache.instance()
+            products = cache.get_all_products()
+            
+            if products:
+                # products is list of (code, designation)
+                self.names = [p[1] for p in products if p[1]]
             else:
-                # Fallback to local DB if XpertPharm fails
+                # Fallback to local DB if Cache is empty (shouldn't happen if initialized)
                 with get_db() as db:
                     if db:
                         results = db.query(Nomenclature.designation).all()
@@ -97,40 +103,51 @@ class FloatingSearchWidget(QWidget):
         product_data = None # {code, designation}
         
         try:
-            if xp_conn:
-                cursor = xp_conn.cursor()
-                # 1. Try Barcode (CODE_BARRE in View_STK_PRODUITS? Or STK_PRODUITS?)
-                # View_STK_PRODUITS usually has CODE_BARRE. Let's check RotationWidget query... 
-                # RotationWidget used View_STK_PRODUITS but only selected CODE and DESIGNATION.
-                # Let's assume View_STK_PRODUITS has CODE_BARRE or CODE_BARRE_PRINCIPAL.
-                # If not, we might need to join.
-                # Let's try searching by CODE_PRODUIT or DESIGNATION first.
-                # For barcode, usually it's in a separate table or column.
-                # Let's try to match CODE_PRODUIT or DESIGNATION.
-                # If text is digits, it might be a barcode.
+            # 1. Try Cache first (for Name or Code)
+            # If text is NOT a barcode (not all digits), or even if it is, we can check cache for Code.
+            # But Cache doesn't have Barcodes.
+            
+            if not text.isdigit():
+                # Search by Name in Cache
+                results = ProductCache.instance().search(text)
+                # results is list of (code, designation)
+                # We take the best match? Or exact match?
+                # search() returns contains match.
+                # Let's try to find exact match first
                 
-                if text.isdigit():
-                     # Try to find by Barcode first
-                     # We need to know the column name. 
-                     # Let's try a broad search or assume CODE_BARRE exists.
-                     # Safest is to search by CODE_PRODUIT if it matches text (some codes are numeric)
-                     # AND search by CODE_BARRE if column exists.
-                     # Let's assume CODE_BARRE column exists in View_STK_PRODUITS for now.
-                     cursor.execute("SELECT CODE_PRODUIT, DESIGNATION_PRODUIT FROM dbo.View_STK_PRODUITS WHERE CODE_BARRE = ?", (text,))
-                     row = cursor.fetchone()
-                     if not row:
-                         # Try Code Produit
-                         cursor.execute("SELECT CODE_PRODUIT, DESIGNATION_PRODUIT FROM dbo.View_STK_PRODUITS WHERE CODE_PRODUIT = ?", (text,))
+                # Simple exact match check
+                exact_match = next((p for p in results if p[1].lower() == text.lower()), None)
+                if exact_match:
+                    product_data = {'code': exact_match[0], 'designation': exact_match[1]}
+                elif results:
+                    # Take the first one? Or let user choose?
+                    # Current logic expects one result.
+                    # Let's take the first one for now as per previous logic
+                    product_data = {'code': results[0][0], 'designation': results[0][1]}
+            
+            # 2. If not found in Cache or is Barcode, try SQL (XpertPharm)
+            if not product_data:
+                xp_conn = get_xpertpharm_connection()
+                if xp_conn:
+                    cursor = xp_conn.cursor()
+                    
+                    if text.isdigit():
+                         # Try Barcode
+                         cursor.execute("SELECT CODE_PRODUIT, DESIGNATION_PRODUIT FROM dbo.View_STK_PRODUITS WHERE CODE_BARRE = ?", (text,))
                          row = cursor.fetchone()
-                else:
-                     # Search by Name
-                     cursor.execute("SELECT CODE_PRODUIT, DESIGNATION_PRODUIT FROM dbo.View_STK_PRODUITS WHERE DESIGNATION_PRODUIT = ?", (text,))
-                     row = cursor.fetchone()
-                
-                if row:
-                    product_data = {'code': row[0], 'designation': row[1]}
-                
-                xp_conn.close()
+                         if not row:
+                             # Try Code Produit (if numeric)
+                             cursor.execute("SELECT CODE_PRODUIT, DESIGNATION_PRODUIT FROM dbo.View_STK_PRODUITS WHERE CODE_PRODUIT = ?", (text,))
+                             row = cursor.fetchone()
+                    else:
+                         # Search by Name (if cache missed or failed)
+                         cursor.execute("SELECT CODE_PRODUIT, DESIGNATION_PRODUIT FROM dbo.View_STK_PRODUITS WHERE DESIGNATION_PRODUIT = ?", (text,))
+                         row = cursor.fetchone()
+                    
+                    if row:
+                        product_data = {'code': row[0], 'designation': row[1]}
+                    
+                    xp_conn.close()
 
             # If not found in XpertPharm (or no connection), try local Product/Nomenclature?
             # User said source MUST be XpertPharm. But fallback is good practice?

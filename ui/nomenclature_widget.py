@@ -8,6 +8,7 @@ from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QColor, QFont
 from database.connection import get_db, get_xpertpharm_connection
 from database.models import Nomenclature
+from database.cache import ProductCache
 from sqlalchemy import func
 import logging
 from datetime import datetime
@@ -176,18 +177,26 @@ class NomenclatureWidget(QWidget):
                 local_codes = [r[0] for r in db.query(Nomenclature.code).all()]
                 local_set = set(local_codes)
                 
-                # 2. Get XP Codes
-                conn = get_xpertpharm_connection()
-                if not conn:
-                    progress.close()
-                    QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
-                    return
-                    
-                cursor = conn.cursor()
-                cursor.execute("SELECT CODE_PRODUIT FROM dbo.View_STK_PRODUITS")
-                xp_codes = [r[0] for r in cursor.fetchall()]
-                xp_set = set(xp_codes)
-                conn.close()
+                # 2. Get XP Codes from Cache
+                cache = ProductCache.instance()
+                xp_products = cache.get_all_products()
+                
+                if xp_products:
+                    xp_codes = [p[0] for p in xp_products]
+                    xp_set = set(xp_codes)
+                else:
+                    # Fallback to SQL if cache empty
+                    conn = get_xpertpharm_connection()
+                    if not conn:
+                        progress.close()
+                        QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
+                        return
+                        
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT CODE_PRODUIT FROM dbo.View_STK_PRODUITS")
+                    xp_codes = [r[0] for r in cursor.fetchall()]
+                    xp_set = set(xp_codes)
+                    conn.close()
                 
                 # 3. Diff
                 obsolete_codes = local_set - xp_set
@@ -224,17 +233,24 @@ class NomenclatureWidget(QWidget):
                 local_noms = db.query(Nomenclature).all()
                 local_map = {n.code: n for n in local_noms}
                 
-                # 2. Get XP Data
-                conn = get_xpertpharm_connection()
-                if not conn:
-                    progress.close()
-                    QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
-                    return
-                    
-                cursor = conn.cursor()
-                cursor.execute("SELECT CODE_PRODUIT, DESIGNATION FROM dbo.View_STK_PRODUITS")
-                xp_data = cursor.fetchall()
-                conn.close()
+                # 2. Get XP Data from Cache
+                cache = ProductCache.instance()
+                xp_products = cache.get_all_products()
+                
+                if xp_products:
+                    xp_data = xp_products # List of (code, designation)
+                else:
+                    # Fallback
+                    conn = get_xpertpharm_connection()
+                    if not conn:
+                        progress.close()
+                        QMessageBox.critical(self, "Erreur", "Impossible de se connecter à XpertPharm.")
+                        return
+                        
+                    cursor = conn.cursor()
+                    cursor.execute("SELECT CODE_PRODUIT, DESIGNATION FROM dbo.View_STK_PRODUITS")
+                    xp_data = cursor.fetchall()
+                    conn.close()
                 
                 updates = []
                 
