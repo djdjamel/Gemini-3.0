@@ -18,6 +18,7 @@ class BackgroundDelegate(QStyledItemDelegate):
 
 from database.connection import get_db
 from database.models import Product, Location, MissingItem, Nomenclature, Notification
+from database.cache import ProductCache
 from ui.request_dialog import RequestDialog
 from config import config
 from sqlalchemy.orm import joinedload
@@ -96,9 +97,13 @@ class SearchWidget(QWidget):
             # 2. Local Search (Distinct Products - Catalog View)
             # We want to find unique products matching the description to allow adding to "Missing"
             # distinct() on code/designation
-            distinct_products = db.query(Nomenclature.code, Nomenclature.designation).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+            # distinct_products = db.query(Nomenclature.code, Nomenclature.designation).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
             
-            total_rows = len(stock_lines) + len(distinct_products)
+            # Use Cache instead
+            cache_results = ProductCache.instance().search(query_text)
+            # cache_results is list of (code, designation)
+            
+            total_rows = len(stock_lines) + len(cache_results)
             self.table.setRowCount(total_rows)
         
         # Display Stock Lines
@@ -156,7 +161,7 @@ class SearchWidget(QWidget):
 
         # Display Distinct Products (Catalog View)
         start_distinct = len(stock_lines)
-        for i, d_prod in enumerate(distinct_products):
+        for i, (code, designation) in enumerate(cache_results):
             row = start_distinct + i
             
             # Helper to set item with background color
@@ -164,18 +169,17 @@ class SearchWidget(QWidget):
                 item = QTableWidgetItem(str(text or ""))
                 item.setBackground(QColor("#ffebee")) # Light Red / Soft
                 # Mark as catalog item
-                # d_prod is a Row/Tuple (code, designation)
                 data = {
-                    "CODE_PRODUIT": d_prod.code,
-                    "designation": d_prod.designation,
-                    "barcode": "" # Barcode not available in Nomenclature
+                    "CODE_PRODUIT": code,
+                    "designation": designation,
+                    "barcode": "" # Barcode not available in Cache
                 }
                 item.setData(Qt.ItemDataRole.UserRole, {"type": "catalog", "data": data})
                 return item
 
             self.table.setItem(row, 0, create_colored_item("CATALOGUE"))
-            self.table.setItem(row, 1, create_colored_item(d_prod.code))
-            self.table.setItem(row, 2, create_colored_item(d_prod.designation))
+            self.table.setItem(row, 1, create_colored_item(code))
+            self.table.setItem(row, 2, create_colored_item(designation))
             self.table.setItem(row, 3, create_colored_item(""))
             self.table.setItem(row, 4, create_colored_item("")) # No expiry for generic view
             
@@ -191,7 +195,10 @@ class SearchWidget(QWidget):
             add_missing_btn.setIcon(self.style().standardIcon(QStyle.StandardPixmap.SP_DialogApplyButton)) # Example icon
             add_missing_btn.setToolTip("Ajouter au Manquant")
             # Pass the distinct product data to the handler
-            add_missing_btn.clicked.connect(lambda checked, p_data=d_prod: self.add_to_missing(p_data))
+            # We need to pass a dict or object that has code/designation
+            # The handler expects an object with .code/.designation OR a dict with keys
+            p_data = {"CODE_PRODUIT": code, "designation": designation}
+            add_missing_btn.clicked.connect(lambda checked, p_data=p_data: self.add_to_missing(p_data))
             actions_layout.addWidget(add_missing_btn)
 
             actions_widget.setLayout(actions_layout)
@@ -268,6 +275,13 @@ class SearchWidget(QWidget):
                     existing.reported_at = datetime.now()
                     msg = f"Le produit '{designation}' était déjà dans la liste des manquants. Date mise à jour."
                 else:
+                    # Ensure Nomenclature exists locally (sync if needed)
+                    nom = db.query(Nomenclature).filter(Nomenclature.code == code).first()
+                    if not nom:
+                        nom = Nomenclature(code=code, designation=designation, last_edit_date=datetime.now())
+                        db.add(nom)
+                        db.commit() # Commit to be safe
+                    
                     new_missing = MissingItem(
                         product_code=code,
                         source="Recherche",

@@ -6,6 +6,7 @@ from PyQt6.QtCore import Qt, QTimer, QEvent
 from PyQt6.QtGui import QColor
 from database.connection import get_db
 from database.models import Product, SupplyList, SupplyListItem, Nomenclature, MissingItem
+from database.cache import ProductCache
 from sqlalchemy.orm import joinedload
 import logging
 import pandas as pd
@@ -247,9 +248,13 @@ class EntryWidget(QWidget):
             products = db.query(Product).join(Nomenclature).options(joinedload(Product.location), joinedload(Product.nomenclature)).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
             
             # 2. Catalog Items (Nomenclature)
-            catalog_items = db.query(Nomenclature).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+            # catalog_items = db.query(Nomenclature).filter(Nomenclature.designation.ilike(f"%{query_text}%")).all()
+            
+            # Use Cache
+            cache_results = ProductCache.instance().search(query_text)
+            # cache_results is list of (code, designation)
         
-        total_rows = len(products) + len(catalog_items)
+        total_rows = len(products) + len(cache_results)
         self.results_table.setRowCount(total_rows)
         
         # Display Stock Items
@@ -267,7 +272,7 @@ class EntryWidget(QWidget):
 
         # Display Catalog Items
         start_row = len(products)
-        for i, nom in enumerate(catalog_items):
+        for i, (code, designation) in enumerate(cache_results):
             row = start_row + i
             
             def create_colored_item(text):
@@ -275,11 +280,13 @@ class EntryWidget(QWidget):
                 item.setBackground(QColor("#ffebee")) # Light Red
                 return item
 
-            item_desig = create_colored_item(nom.designation)
-            item_desig.setData(Qt.ItemDataRole.UserRole, nom) # Store Nomenclature object
+            item_desig = create_colored_item(designation)
+            # Store dict instead of Nomenclature object
+            data = {"code": code, "designation": designation, "type": "catalog"}
+            item_desig.setData(Qt.ItemDataRole.UserRole, data) 
             
             self.results_table.setItem(row, 0, item_desig)
-            self.results_table.setItem(row, 1, create_colored_item(str(nom.code)))
+            self.results_table.setItem(row, 1, create_colored_item(str(code)))
             self.results_table.setItem(row, 2, create_colored_item("CATALOGUE"))
             self.results_table.setItem(row, 3, create_colored_item(""))
 
@@ -292,22 +299,33 @@ class EntryWidget(QWidget):
         item_data = self.results_table.item(row, 0).data(Qt.ItemDataRole.UserRole)
         
         # Check if it's a Catalog Item (Nomenclature) -> Add to Missing
-        if isinstance(item_data, Nomenclature):
+        # Now it's a dict with type='catalog'
+        if isinstance(item_data, dict) and item_data.get("type") == "catalog":
             with get_db() as db:
                 if not db: return False
                 try:
-                    existing = db.query(MissingItem).filter(MissingItem.product_code == item_data.code).first()
+                    code = item_data.get("code")
+                    designation = item_data.get("designation")
+                    
+                    existing = db.query(MissingItem).filter(MissingItem.product_code == code).first()
                     if existing:
                         existing.reported_at = datetime.now()
-                        msg = f"Le produit '{item_data.designation}' était déjà dans la liste des manquants. Date mise à jour."
+                        msg = f"Le produit '{designation}' était déjà dans la liste des manquants. Date mise à jour."
                     else:
+                        # Ensure Nomenclature exists locally (sync if needed)
+                        nom = db.query(Nomenclature).filter(Nomenclature.code == code).first()
+                        if not nom:
+                            nom = Nomenclature(code=code, designation=designation, last_edit_date=datetime.now())
+                            db.add(nom)
+                            db.commit() # Commit to be safe
+                        
                         new_missing = MissingItem(
-                            product_code=item_data.code,
+                            product_code=code,
                             source="Saisie",
                             reported_at=datetime.now()
                         )
                         db.add(new_missing)
-                        msg = f"Le produit '{item_data.designation}' a été ajouté aux manquants."
+                        msg = f"Le produit '{designation}' a été ajouté aux manquants."
                     
                     db.commit()
                     QMessageBox.information(self, "Succès", msg)
