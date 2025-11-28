@@ -68,6 +68,12 @@ class SettingsWidget(QWidget):
         self.station_name = QLineEdit()
         app_layout.addRow("Nom du Poste:", self.station_name)
         
+        # Reload Cache Button
+        reload_cache_btn = QPushButton("Recharger le cache produits")
+        reload_cache_btn.setToolTip("Force le rechargement de la liste des produits depuis XpertPharm.")
+        reload_cache_btn.clicked.connect(self.reload_cache)
+        app_layout.addRow(reload_cache_btn)
+        
         app_group.setLayout(app_layout)
         layout.addWidget(app_group)
 
@@ -126,3 +132,8 @@ STATION_NAME={self.station_name.text()}
             QMessageBox.information(self, "Succès", "Paramètres enregistrés. Veuillez redémarrer l'application.")
         except Exception as e:
             QMessageBox.critical(self, "Erreur", f"Erreur lors de l'enregistrement: {e}")
+
+    def reload_cache(self):
+        from database.cache import ProductCache
+        ProductCache.instance().reload_cache()
+        QMessageBox.information(self, "Info", "Le rechargement du cache a été lancé en arrière-plan.")

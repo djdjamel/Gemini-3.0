@@ -187,3 +187,32 @@ def check_newer_barcodes(barcode, product_code, created_on):
         return 0
     finally:
         conn.close()
+
+def get_all_products_from_xpertpharm():
+    """Fetch all products (Code, Designation) from XpertPharm for caching."""
+    conn = get_xpertpharm_connection()
+    if not conn:
+        return []
+    
+    query = """
+    SELECT p.CODE_PRODUIT, 
+           [XPERTPHARM5_7091_BOURENANE].dbo.GET_DESIGNATION_PRODUIT(p.DESIGNATION, p.DOSAGE, p.UNITE, p.CONDIT, f.DESIGNATION) AS designation 
+    FROM [XPERTPHARM5_7091_BOURENANE].[dbo].[STK_PRODUITS] p 
+    LEFT JOIN [XPERTPHARM5_7091_BOURENANE].[dbo].[BSE_PRODUIT_FORMES] f ON f.CODE=p.CODE_FORME
+    WHERE p.ACTIF = 1
+    ORDER BY designation
+    """
+    
+    try:
+        cursor = conn.cursor()
+        cursor.execute(query)
+        columns = [column[0] for column in cursor.description]
+        results = []
+        for row in cursor.fetchall():
+            results.append(dict(zip(columns, row)))
+        return results
+    except Exception as e:
+        logger.error(f"Error fetching all products from XpertPharm: {e}")
+        return []
+    finally:
+        conn.close()

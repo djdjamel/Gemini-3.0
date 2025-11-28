@@ -68,6 +68,10 @@ def main():
     # Initialize Database
     logger.info("Initializing database...")
     init_db()
+
+    # Start Product Cache Loader
+    from database.cache import ProductCache
+    ProductCache.instance().load_cache()
     
     splash.showMessage("Démarrage de l'interface...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.black)
     app.processEvents()

@@ -7,6 +7,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, QStringListModel, QEvent, QTimer
 from PyQt6.QtGui import QStandardItemModel, QStandardItem, QPalette, QFont
 from database.connection import get_xpertpharm_connection
+from database.cache import ProductCache
 import logging
 from datetime import datetime
 import os
@@ -214,34 +215,42 @@ class RotationWidget(QWidget):
         QApplication.processEvents()
         
         try:
-            conn = get_xpertpharm_connection()
-            if not conn:
-                self.status_label.setText("Erreur de connexion XpertPharm.")
-                return
+            # Use Cache
+            cache = ProductCache.instance()
+            products = cache.get_all_products()
             
-            cursor = conn.cursor()
-            # SELECT [CODE_PRODUIT], [DESIGNATION_PRODUIT] ... FROM dbo.View_STK_PRODUIT WHERE [ACTIF] = 1
-            sql = """
-                SELECT CODE_PRODUIT, DESIGNATION_PRODUIT 
-                FROM dbo.View_STK_PRODUITS 
-                WHERE ACTIF = 1
-                ORDER BY DESIGNATION_PRODUIT
-            """
-            cursor.execute(sql)
-            rows = cursor.fetchall()
+            if not products:
+                # If cache is empty, maybe it's still loading or failed. 
+                # We can try to connect to signal or just show empty for now.
+                # Or force a reload? No, that blocks.
+                # Let's check if it's loading
+                if cache.is_loading:
+                     self.status_label.setText("Cache en cours de chargement...")
+                     # Connect to signal to update when ready
+                     cache.cache_updated.connect(self.load_products)
+                     return
+                else:
+                     self.status_label.setText("Aucun produit dans le cache.")
             
             self.product_combo.clear()
-            for row in rows:
-                # row[0] = CODE, row[1] = DESIGNATION
-                self.product_combo.addItem(f"{row[1]}", row[0])
-                
-            conn.close()
+            # products is list of tuples (code, designation)
+            # Sort by designation
+            products.sort(key=lambda x: x[1])
             
+            for code, designation in products:
+                self.product_combo.addItem(f"{designation}", code)
+                
             # Update completer model
             if self.product_combo.completer():
                 self.product_combo.completer().setModel(self.product_combo.model())
                 
-            self.status_label.setText(f"{len(rows)} produits chargés.")
+            self.status_label.setText(f"{len(products)} produits chargés (Cache).")
+            
+            # Disconnect signal if it was connected (to avoid multiple calls)
+            try:
+                cache.cache_updated.disconnect(self.load_products)
+            except:
+                pass
                 
         except Exception as e:
             logger.error(f"Load products error: {e}")
