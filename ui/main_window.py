@@ -112,13 +112,19 @@ class MainWindow(QMainWindow):
         self.nomenclature_tab = NomenclatureWidget()
         self.tabs.addTab(self.nomenclature_tab, "Nomenclature")
 
-        # 13. Paramètres
+        # 13. Emplacements
+        update_splash("Chargement du module Emplacements...")
+        from ui.locations_widget import LocationsWidget
+        self.locations_tab = LocationsWidget()
+        self.tabs.addTab(self.locations_tab, "Emplacements")
+
+        # 14. Paramètres
         update_splash("Chargement du module Paramètres...")
         from ui.settings_widget import SettingsWidget
         self.settings_tab = SettingsWidget()
         self.tabs.addTab(self.settings_tab, "Paramètres")
 
-        # 14. Messages
+        # 15. Messages
         update_splash("Chargement du module Messages...")
         from ui.messages_widget import MessagesWidget
         self.messages_tab = MessagesWidget()
