@@ -329,7 +329,7 @@ def get_stylesheet():
     /* Check Box - Modern Toggle Style */
     QCheckBox {
         spacing: 10px;
-        color: #2d3748;
+        color: #ffffff;
     }
     
     QCheckBox::indicator {
@@ -353,7 +353,7 @@ def get_stylesheet():
     /* Radio Button */
     QRadioButton {
         spacing: 10px;
-        color: #2d3748;
+        color: #ffffff;
     }
     
     QRadioButton::indicator {
