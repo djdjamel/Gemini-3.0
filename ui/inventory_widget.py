@@ -113,6 +113,10 @@ class InventoryWidget(QWidget):
         self.table.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.table.verticalHeader().setDefaultSectionSize(48)
         
+        # Add context menu for printing
+        self.table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.table.customContextMenuRequested.connect(self.show_context_menu)
+        
         layout.addWidget(self.table)
 
         self.setLayout(layout)
@@ -272,8 +276,20 @@ class InventoryWidget(QWidget):
             self.table.setRowCount(len(products))
             for row, prod in enumerate(products):
                 designation = prod.nomenclature.designation if prod.nomenclature else "Unknown"
-                # Removed Code column (index 0)
-                self.table.setItem(row, 0, QTableWidgetItem(designation))
+                
+                # Create designation item and store product data for printing
+                designation_item = QTableWidgetItem(designation)
+                
+                # Store product data for barcode printing
+                product_data = {
+                    'designation': designation,
+                    'barcode': prod.barcode,
+                    'expiry_date': prod.expiry_date
+                }
+                designation_item.setData(Qt.ItemDataRole.UserRole, product_data)
+                
+                # Set items in table
+                self.table.setItem(row, 0, designation_item)
                 self.table.setItem(row, 1, QTableWidgetItem(str(prod.expiry_date)))
                 self.table.setItem(row, 2, QTableWidgetItem(prod.barcode))
                 
@@ -454,6 +470,166 @@ class InventoryWidget(QWidget):
         if self.cleaning_mode:
             self.scan_input.setStyleSheet("background-color: #ffcdd2; color: #c62828;") # Red
             self.btn_start_cleaning.setEnabled(False)
+            self.btn_verify_cleaning.setEnabled(True)
         else:
             self.scan_input.setStyleSheet("") # Reset
             self.btn_start_cleaning.setEnabled(True)
+            self.btn_verify_cleaning.setEnabled(False)
+
+    def show_context_menu(self, position):
+        """Show context menu for barcode printing"""
+        from PyQt6.QtWidgets import QMenu
+        
+        menu = QMenu()
+        
+        # Print selected product
+        selected_row = self.table.currentRow()
+        if selected_row >= 0:
+            print_item = menu.addAction("Imprimer ce produit")
+            print_item.triggered.connect(lambda: self.print_selected_product(selected_row))
+        
+        # Print all products
+        if self.table.rowCount() > 0:
+            print_all = menu.addAction("Imprimer tous")
+            print_all.triggered.connect(self.print_all_products)
+        
+        menu.exec(self.table.viewport().mapToGlobal(position))
+    
+    def print_selected_product(self, row):
+        """Print barcode for selected product"""
+        product_data = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+        if product_data:
+            self.print_product_barcodes([product_data])
+    
+    def print_all_products(self):
+        """Print barcodes for all products with confirmation"""
+        count = self.table.rowCount()
+        
+        reply = QMessageBox.question(
+            self,
+            "Confirmation",
+            f"Voulez-vous vraiment imprimer {count} étiquette(s) de produits ?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+        )
+        
+        if reply == QMessageBox.StandardButton.Yes:
+            products = []
+            for row in range(count):
+                product_data = self.table.item(row, 0).data(Qt.ItemDataRole.UserRole)
+                if product_data:
+                    products.append(product_data)
+            
+            if products:
+                self.print_product_barcodes(products)
+    
+    def print_product_barcodes(self, products):
+        """Print barcode labels for products"""
+        try:
+            from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
+            from PyQt6.QtGui import QPainter, QPageSize, QPageLayout, QPixmap, QFont
+            from PyQt6.QtCore import QSizeF, QRectF, QMarginsF
+            from io import BytesIO
+            
+            try:
+                import barcode
+                from barcode.writer import ImageWriter
+            except ImportError:
+                QMessageBox.critical(
+                    self,
+                    "Module manquant",
+                    "Le module 'python-barcode' n'est pas installé.\n\n"
+                    "Installez-le avec: pip install python-barcode pillow"
+                )
+                return
+            
+            # Create printer with custom page size (40mm x 20mm in landscape)
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            
+            # Set custom page size for barcode labels (40mm width x 20mm height)
+            page_size = QPageSize(QSizeF(40, 20), QPageSize.Unit.Millimeter)
+            printer.setPageSize(page_size)
+            printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+            printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
+            
+            # Show native Windows print dialog
+            print_dialog = QPrintDialog(printer, self)
+            if print_dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            
+            # Force custom page size again after dialog
+            printer.setPageSize(page_size)
+            printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+            printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
+            
+            # Start printing
+            painter = QPainter()
+            if not painter.begin(printer):
+                QMessageBox.critical(self, "Erreur", "Impossible de démarrer l'impression.")
+                return
+            
+            for idx, product in enumerate(products):
+                if idx > 0:
+                    printer.newPage()
+                
+                # Get page dimensions
+                page_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+                width = page_rect.width()
+                height = page_rect.height()
+                
+                # Draw product name at top (10pt)
+                painter.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+                painter.drawText(QRectF(0, 0, width, height * 0.2), Qt.AlignmentFlag.AlignCenter, product['designation'])
+                
+                # Generate barcode using python-barcode (without text)
+                CODE128 = barcode.get_barcode_class('code128')
+                barcode_obj = CODE128(product['barcode'], writer=ImageWriter())
+                
+                # Render barcode to PNG in memory (without text)
+                buffer = BytesIO()
+                barcode_obj.write(buffer, options={
+                    'module_width': 0.25,
+                    'module_height': 8,
+                    'font_size': 0,
+                    'text_distance': 0,
+                    'quiet_zone': 1,
+                    'write_text': False
+                })
+                buffer.seek(0)
+                
+                # Convert to QPixmap
+                pixmap = QPixmap()
+                pixmap.loadFromData(buffer.read())
+                
+                # Draw barcode bars (30% of height)
+                barcode_height = height * 0.3
+                barcode_width = width * 0.95
+                x_offset = (width - barcode_width) / 2
+                y_offset = height * 0.25
+                
+                painter.drawPixmap(QRectF(x_offset, y_offset, barcode_width, barcode_height), pixmap, QRectF(pixmap.rect()))
+                
+                # Bottom section: Expiry date (left) and Barcode number (right)
+                painter.setFont(QFont("Arial", 8))
+                
+                # Expiry date on the left (MM/YY format)
+                expiry_text = ""
+                if product.get('expiry_date'):
+                    try:
+                        if isinstance(product['expiry_date'], str):
+                            expiry_text = product['expiry_date']
+                        else:
+                            expiry_text = product['expiry_date'].strftime('%m/%y')
+                    except:
+                        expiry_text = str(product.get('expiry_date', ''))
+                
+                painter.drawText(QRectF(0, height * 0.7, width * 0.4, height * 0.3), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, expiry_text)
+                
+                # Barcode number on the right
+                painter.drawText(QRectF(width * 0.6, height * 0.7, width * 0.4, height * 0.3), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, product['barcode'])
+            
+            painter.end()
+            QMessageBox.information(self, "Succès", f"{len(products)} étiquette(s) imprimée(s).")
+            
+        except Exception as e:
+            logger.error(f"Error printing barcodes: {e}")
+            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'impression: {e}")
