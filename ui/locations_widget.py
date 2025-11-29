@@ -1,9 +1,10 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QTableWidget, QTableWidgetItem,
     QPushButton, QMessageBox, QHeaderView, QDialog, QLabel, QLineEdit,
-    QDialogButtonBox, QFormLayout, QStyle
+    QDialogButtonBox, QFormLayout, QStyle, QCheckBox, QFileDialog
 )
 from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QFont
 from database.connection import get_db
 from database.models import Location, Product
 import logging
@@ -83,23 +84,38 @@ class LocationsWidget(QWidget):
         add_btn = QPushButton("Ajouter un emplacement")
         add_btn.clicked.connect(self.add_location)
         top_layout.addWidget(add_btn)
+        
+        # Selection buttons
+        select_all_btn = QPushButton("Tout sélectionner")
+        select_all_btn.clicked.connect(self.toggle_select_all)
+        top_layout.addWidget(select_all_btn)
+        
+        # Print barcodes button
+        print_btn = QPushButton("Imprimer codes-barres")
+        print_btn.clicked.connect(self.print_barcodes)
+        top_layout.addWidget(print_btn)
+        
         top_layout.addStretch()
         layout.addLayout(top_layout)
         
         # Table
         self.table = QTableWidget()
-        self.table.setColumnCount(3)
-        self.table.setHorizontalHeaderLabels(["Label", "Code-barre", "Actions"])
+        self.table.setColumnCount(4)
+        self.table.setHorizontalHeaderLabels(["☑", "Label", "Code-barre", "Actions"])
         header = self.table.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
         self.table.verticalHeader().setDefaultSectionSize(48)
         self.table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self.table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         layout.addWidget(self.table)
         
         self.setLayout(layout)
+        
+        # Track selection state for toggle
+        self.all_selected = False
     
     def load_locations(self):
         self.table.setRowCount(0)
@@ -112,8 +128,21 @@ class LocationsWidget(QWidget):
             self.table.setRowCount(len(locations))
             
             for row, loc in enumerate(locations):
-                self.table.setItem(row, 0, QTableWidgetItem(loc.label))
-                self.table.setItem(row, 1, QTableWidgetItem(loc.barcode))
+                # Checkbox
+                checkbox = QCheckBox()
+                checkbox_widget = QWidget()
+                checkbox_layout = QHBoxLayout()
+                checkbox_layout.setContentsMargins(0, 0, 0, 0)
+                checkbox_layout.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                checkbox_layout.addWidget(checkbox)
+                checkbox_widget.setLayout(checkbox_layout)
+                self.table.setCellWidget(row, 0, checkbox_widget)
+                
+                # Store location data
+                label_item = QTableWidgetItem(loc.label)
+                label_item.setData(Qt.ItemDataRole.UserRole, loc)
+                self.table.setItem(row, 1, label_item)
+                self.table.setItem(row, 2, QTableWidgetItem(loc.barcode))
                 
                 # Actions
                 actions_widget = QWidget()
@@ -139,7 +168,159 @@ class LocationsWidget(QWidget):
                 actions_layout.addWidget(del_btn)
                 
                 actions_widget.setLayout(actions_layout)
-                self.table.setCellWidget(row, 2, actions_widget)
+                self.table.setCellWidget(row, 3, actions_widget)
+    
+    def toggle_select_all(self):
+        self.all_selected = not self.all_selected
+        
+        for row in range(self.table.rowCount()):
+            checkbox_widget = self.table.cellWidget(row, 0)
+            if checkbox_widget:
+                checkbox = checkbox_widget.findChild(QCheckBox)
+                if checkbox:
+                    checkbox.setChecked(self.all_selected)
+    
+    def get_selected_locations(self):
+        selected = []
+        for row in range(self.table.rowCount()):
+            checkbox_widget = self.table.cellWidget(row, 0)
+            if checkbox_widget:
+                checkbox = checkbox_widget.findChild(QCheckBox)
+                if checkbox and checkbox.isChecked():
+                    label_item = self.table.item(row, 1)
+                    if label_item:
+                        location = label_item.data(Qt.ItemDataRole.UserRole)
+                        if location:
+                            selected.append(location)
+        return selected
+    
+    def print_barcodes(self):
+        selected = self.get_selected_locations()
+        
+        if not selected:
+            QMessageBox.warning(self, "Aucune sélection", "Veuillez sélectionner au moins un emplacement.")
+            return
+        
+        try:
+            from PyQt6.QtPrintSupport import QPrinter, QPrintDialog
+            from PyQt6.QtGui import QPainter, QPageSize, QPageLayout, QPixmap
+            from PyQt6.QtCore import QSizeF, QRectF, QMarginsF
+            from io import BytesIO
+            
+            try:
+                import barcode
+                from barcode.writer import ImageWriter
+            except ImportError:
+                QMessageBox.critical(
+                    self,
+                    "Module manquant",
+                    "Le module 'python-barcode' n'est pas installé.\n\n"
+                    "Installez-le avec: pip install python-barcode pillow"
+                )
+                return
+            
+            # Create printer with custom page size (40mm x 20mm in landscape)
+            printer = QPrinter(QPrinter.PrinterMode.HighResolution)
+            
+            # Set custom page size for barcode labels (40mm width x 20mm height for landscape)
+            page_size = QPageSize(QSizeF(40, 20), QPageSize.Unit.Millimeter)
+            printer.setPageSize(page_size)
+            printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+            
+            # Set zero margins using QMarginsF
+            printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
+            
+            # Show native Windows print dialog
+            print_dialog = QPrintDialog(printer, self)
+            if print_dialog.exec() != QDialog.DialogCode.Accepted:
+                return
+            
+            # FORCE custom page size again after dialog (dialog may have changed it to A4)
+            printer.setPageSize(page_size)
+            printer.setPageOrientation(QPageLayout.Orientation.Landscape)
+            printer.setPageMargins(QMarginsF(0, 0, 0, 0), QPageLayout.Unit.Millimeter)
+            
+            # Start printing
+            painter = QPainter()
+            if not painter.begin(printer):
+                QMessageBox.critical(self, "Erreur", "Impossible de démarrer l'impression.")
+                return
+            
+            for idx, location in enumerate(selected):
+                if idx > 0:
+                    # New page for each label
+                    printer.newPage()
+                
+                # Get page dimensions in pixels
+                page_rect = printer.pageRect(QPrinter.Unit.DevicePixel)
+                width = page_rect.width()
+                height = page_rect.height()
+                
+                # Convert 2mm to pixels (at printer DPI)
+                dpi = printer.resolution()
+                margin_2mm = (2 / 25.4) * dpi  # 2mm in pixels
+                
+                # DEBUG: Print dimensions in mm
+                width_mm = (width / dpi) * 25.4
+                height_mm = (height / dpi) * 25.4
+                text_zone_height_mm = height_mm * 0.3
+                barcode_zone_height_mm = height_mm * 0.65
+                
+                print(f"\n=== DEBUG ÉTIQUETTE {location.label} ===")
+                print(f"Résolution imprimante: {dpi} DPI")
+                print(f"Dimensions page: {width_mm:.2f}mm x {height_mm:.2f}mm")
+                print(f"Zone texte (haut): {text_zone_height_mm:.2f}mm (30% de {height_mm:.2f}mm)")
+                print(f"Zone code-barres: {barcode_zone_height_mm:.2f}mm (65% de {height_mm:.2f}mm)")
+                print(f"Marge gauche/droite: 2.00mm")
+                print(f"Police emplacement: 24pt = {24 * 0.353:.2f}mm")
+                print(f"Police numéro: 16pt = {16 * 0.353:.2f}mm")
+                print(f"Hauteur barres code-barres: 8mm")
+                print(f"Largeur barre individuelle: 0.25mm")
+                print("="*40)
+                
+                # Draw location label and barcode number on same line at top
+                # Location on the left, larger font with 2mm left margin
+                painter.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+                painter.drawText(QRectF(margin_2mm, 0, width * 0.5, height * 0.3), Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter, location.label)
+                
+                # Barcode number on the right with 2mm right margin
+                painter.setFont(QFont("Arial", 16))
+                painter.drawText(QRectF(width * 0.4, 0, width * 0.6 - margin_2mm, height * 0.3), Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter, location.barcode)
+                
+                # Generate barcode using python-barcode (without text below)
+                CODE128 = barcode.get_barcode_class('code128')
+                barcode_obj = CODE128(location.barcode, writer=ImageWriter())
+                
+                # Render barcode to PNG in memory (without text)
+                buffer = BytesIO()
+                barcode_obj.write(buffer, options={
+                    'module_width': 0.25,
+                    'module_height': 8,
+                    'font_size': 0,  # Hide the text below barcode
+                    'text_distance': 0,
+                    'quiet_zone': 1,
+                    'write_text': False  # Don't write text
+                })
+                buffer.seek(0)
+                
+                # Convert to QPixmap
+                pixmap = QPixmap()
+                pixmap.loadFromData(buffer.read())
+                
+                # Draw barcode bars below the text
+                barcode_height = height * 0.65
+                barcode_width = width * 0.95
+                x_offset = (width - barcode_width) / 2
+                y_offset = height * 0.3
+                
+                painter.drawPixmap(QRectF(x_offset, y_offset, barcode_width, barcode_height), pixmap, QRectF(pixmap.rect()))
+            
+            painter.end()
+            QMessageBox.information(self, "Succès", f"{len(selected)} code(s)-barre(s) imprimé(s).")
+            
+        except Exception as e:
+            logger.error(f"Error printing barcodes: {e}")
+            QMessageBox.critical(self, "Erreur", f"Erreur lors de l'impression: {e}")
     
     def add_location(self):
         dialog = LocationDialog(parent=self)
