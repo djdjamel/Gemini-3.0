@@ -150,8 +150,8 @@ class InvoiceWidget(QWidget):
             # Check if product exists locally
             barcode = str(item.get('CODE_BARRE_LOT', '')).strip()
             if barcode and barcode not in existing_barcodes:
-                # Highlight row in red
+                # Highlight row in dark red
                 for col in range(3):
                     cell = self.details_table.item(row, col)
-                    cell.setBackground(QColor("#ffebee")) # Light Red
+                    cell.setBackground(QColor("#991b1b")) # Dark Red for products not found locally
                     cell.setToolTip("Produit non trouvé dans l'emplacement local")
