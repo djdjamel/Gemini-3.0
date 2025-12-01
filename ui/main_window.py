@@ -100,6 +100,12 @@ class MainWindow(QMainWindow):
         self.rotation_tab = RotationWidget()
         self.tabs.addTab(self.rotation_tab, "Rotation")
 
+        # 11. Statistiques
+        update_splash("Chargement du module Statistiques...")
+        from ui.stats_widget import StatsWidget
+        self.stats_tab = StatsWidget()
+        self.tabs.addTab(self.stats_tab, "Statistiques")
+
         # 11. Produits Dormants
         update_splash("Chargement du module Produits Dormants...")
         from ui.dormant_widget import DormantWidget

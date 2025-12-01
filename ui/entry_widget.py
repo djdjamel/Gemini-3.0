@@ -193,6 +193,10 @@ class EntryWidget(QWidget):
                 db.add(new_list)
                 db.commit()
                 
+                # Log Event
+                from database.connection import log_event
+                log_event('LIST_STARTED', details=str(new_list.id), source='EntryWidget')
+                
                 self.current_supply_list = new_list
                 self.current_list_label.setText(f"Liste active: {title} (BROUILLON)")
                 self.list_title_input.clear()
@@ -543,6 +547,10 @@ class EntryWidget(QWidget):
                             nom2.last_supply_date = datetime.now()
                 
                 db.commit()
+                
+                # Log Event
+                from database.connection import log_event
+                log_event('LIST_CLOSED', details=str(self.current_supply_list.id), source='EntryWidget')
             self.refresh_supply_table()
             self.load_draft_lists() # Refresh combo
             QMessageBox.information(self, "Succès", "Liste clôturée. Elle est maintenant disponible pour validation.")

@@ -241,6 +241,10 @@ class ValidationWidget(QWidget):
             # Mark list as validated
             self.current_list.status = 'validated'
             db.commit()
+            
+            # Log Event
+            from database.connection import log_event
+            log_event('LIST_VALIDATED', details=str(self.current_list.id), source='ValidationWidget')
         
         QMessageBox.information(self, "Succès", "Validation terminée.")
         self.load_lists()

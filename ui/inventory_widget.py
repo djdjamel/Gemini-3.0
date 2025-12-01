@@ -258,6 +258,11 @@ class InventoryWidget(QWidget):
             try:
                 db.add(new_product)
                 db.commit()
+                
+                # Log Event
+                from database.connection import log_event
+                log_event('INVENTORY_ADD', details=product_data['CODE_PRODUIT'], source='InventoryWidget')
+                
                 self.load_products()
                 self.speak("Suivant")
             except Exception as e:
@@ -455,6 +460,10 @@ class InventoryWidget(QWidget):
                     # Delete products with cleaning=True
                     deleted_count = db.query(Product).filter(Product.cleaning == True).delete()
                     db.commit()
+                    
+                    # Log Event
+                    from database.connection import log_event
+                    log_event('INVENTORY_CLEANING_LOSS', details=str(deleted_count), source='InventoryWidget')
                     
                     self.cleaning_mode = False
                     self.update_cleaning_ui()

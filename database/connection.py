@@ -40,6 +40,22 @@ def get_db():
     finally:
         db.close()
 
+def log_event(event_type, details=None, source=None):
+    """Helper to log events to the database"""
+    from .models import EventLog
+    try:
+        with get_db() as db:
+            if db:
+                log = EventLog(
+                    event_type=event_type,
+                    details=str(details) if details else None,
+                    source=source
+                )
+                db.add(log)
+                db.commit()
+    except Exception as e:
+        logger.error(f"Failed to log event {event_type}: {e}")
+
 # SQL Server Connection (XpertPharm)
 def get_xpertpharm_connection():
     try:

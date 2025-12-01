@@ -47,7 +47,7 @@ class SupplyList(Base):
     id = Column(Integer, primary_key=True)
     title = Column(String(100), nullable=False)
     created_at = Column(DateTime, default=datetime.now)
-    status = Column(String(20), default='draft') # draft, validated
+    status = Column(String(20), default='draft') # draft, validated, closed
 
     items = relationship("SupplyListItem", back_populates="supply_list", cascade="all, delete-orphan")
 
@@ -102,3 +102,11 @@ class Notification(Base):
     status = Column(String(20), default='pending') # pending, confirmed, rejected, received
     created_at = Column(DateTime, default=datetime.now)
     updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now)
+
+class EventLog(Base):
+    __tablename__ = 'event_logs'
+    id = Column(Integer, primary_key=True)
+    event_type = Column(String(50), nullable=False) # VIEW_LOCATION, LIST_STARTED, LIST_CLOSED, LIST_VALIDATED, INVENTORY_ADD, INVENTORY_CLEANING_LOSS
+    timestamp = Column(DateTime, default=datetime.now)
+    details = Column(String(500), nullable=True) # JSON or Text
+    source = Column(String(50), nullable=True) # Widget name

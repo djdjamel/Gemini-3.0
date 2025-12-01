@@ -250,6 +250,10 @@ class SearchWidget(QWidget):
                                     db.commit()
                     except Exception as e:
                         logger.error(f"Error updating last_search_date: {e}")
+                
+                # Log Event
+                from database.connection import log_event
+                log_event('VIEW_LOCATION', details=code, source='SearchWidget')
             else:
                 item.setText("---") # Toggle back
 
