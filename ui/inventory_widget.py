@@ -357,6 +357,11 @@ class InventoryWidget(QWidget):
                             self.show_error("Info", f"Le produit '{designation}' était le dernier en stock. Il a été ajouté aux manquants.")
                     
                     db.commit()
+                    
+                    # Log Event
+                    from database.connection import log_event
+                    log_event('PRODUCT_DELETED', details=f"ID: {product_id}, Code: {code}", source='InventoryWidget')
+                    
                     self.load_products()
 
     def move_product(self, product):
@@ -374,7 +379,13 @@ class InventoryWidget(QWidget):
                             if prod_db.nomenclature:
                                 prod_db.nomenclature.last_edit_date = datetime.now()
                                 
+                                
                             db.commit()
+                            
+                            # Log Event
+                            from database.connection import log_event
+                            log_event('PRODUCT_MOVED', details=f"ID: {product.id} -> LocID: {new_loc_id}", source='InventoryWidget')
+                            
                             self.load_products() # Refresh
 
     def start_cleaning(self):

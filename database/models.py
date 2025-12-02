@@ -110,3 +110,4 @@ class EventLog(Base):
     timestamp = Column(DateTime, default=datetime.now)
     details = Column(String(500), nullable=True) # JSON or Text
     source = Column(String(50), nullable=True) # Widget name
+    machine_name = Column(String(100), nullable=True) # PC Name

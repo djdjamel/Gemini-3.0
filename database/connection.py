@@ -43,13 +43,15 @@ def get_db():
 def log_event(event_type, details=None, source=None):
     """Helper to log events to the database"""
     from .models import EventLog
+    import socket
     try:
         with get_db() as db:
             if db:
                 log = EventLog(
                     event_type=event_type,
                     details=str(details) if details else None,
-                    source=source
+                    source=source,
+                    machine_name=socket.gethostname()
                 )
                 db.add(log)
                 db.commit()

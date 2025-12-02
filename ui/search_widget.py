@@ -370,12 +370,16 @@ class SearchWidget(QWidget):
                             QMessageBox.information(self, "Info", f"Le produit '{designation}' était le dernier en stock. Il a été ajouté aux manquants.")
 
                     db.commit()
+                    
+                    # Log Event
+                    from database.connection import log_event
+                    log_event('PRODUCT_DELETED', details=f"ID: {product_id}, Code: {code}", source='SearchWidget')
+
                 self.perform_search() # Refresh
 
     def move_product(self, product):
         dialog = ChangeLocationDialog(product.location_id, self)
         if dialog.exec() == QDialog.DialogCode.Accepted:
-            new_loc_id = dialog.selected_location_id
             new_loc_id = dialog.selected_location_id
             if new_loc_id:
                 with get_db() as db:
@@ -389,4 +393,9 @@ class SearchWidget(QWidget):
                                 prod_db.nomenclature.last_edit_date = datetime.now()
                                 
                             db.commit()
+                            
+                            # Log Event
+                            from database.connection import log_event
+                            log_event('PRODUCT_MOVED', details=f"ID: {product.id} -> LocID: {new_loc_id}", source='SearchWidget')
+                            
                     self.perform_search() # Refresh

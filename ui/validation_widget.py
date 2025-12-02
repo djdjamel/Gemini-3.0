@@ -209,6 +209,10 @@ class ValidationWidget(QWidget):
                             prod.nomenclature.last_edit_date = datetime.now()
                         
                         db.delete(prod)
+                        
+                        # Log Event
+                        from database.connection import log_event
+                        log_event('PRODUCT_DELETED', details=f"Code: {code} (Validation)", source='ValidationWidget')
 
                         if count == 1:
                             # It was the last one
@@ -237,6 +241,10 @@ class ValidationWidget(QWidget):
                              # Update Nomenclature last_edit_date
                              if prod.nomenclature:
                                  prod.nomenclature.last_edit_date = datetime.now()
+                                 
+                             # Log Event
+                             from database.connection import log_event
+                             log_event('PRODUCT_MOVED', details=f"Code: {prod.code} -> {new_loc.label} (Validation)", source='ValidationWidget')
 
             # Mark list as validated
             self.current_list.status = 'validated'
