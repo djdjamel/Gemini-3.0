@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Date
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Boolean, Date, Float
 from sqlalchemy.orm import relationship, declarative_base
 from datetime import datetime
 
@@ -111,3 +111,4 @@ class EventLog(Base):
     details = Column(String(500), nullable=True) # JSON or Text
     source = Column(String(50), nullable=True) # Widget name
     machine_name = Column(String(100), nullable=True) # PC Name
+    delay = Column(Float, nullable=True) # Délai en heures pour INVENTORY_ADD

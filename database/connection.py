@@ -40,7 +40,7 @@ def get_db():
     finally:
         db.close()
 
-def log_event(event_type, details=None, source=None):
+def log_event(event_type, details=None, source=None, delay=None):
     """Helper to log events to the database"""
     from .models import EventLog
     import socket
@@ -51,7 +51,8 @@ def log_event(event_type, details=None, source=None):
                     event_type=event_type,
                     details=str(details) if details else None,
                     source=source,
-                    machine_name=socket.gethostname()
+                    machine_name=socket.gethostname(),
+                    delay=delay
                 )
                 db.add(log)
                 db.commit()

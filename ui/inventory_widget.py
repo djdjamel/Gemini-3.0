@@ -27,8 +27,11 @@ class TTSThread(QThread):
             engine = pyttsx3.init()
             engine.say(self.text)
             engine.runAndWait()
+            engine.stop()
+            del engine
         except Exception as e:
-            logger.error(f"TTS Error: {e}")
+            # Suppress TTS errors as they're not critical
+            pass
 
 class InventoryWidget(QWidget):
     def __init__(self):
@@ -259,9 +262,31 @@ class InventoryWidget(QWidget):
                 db.add(new_product)
                 db.commit()
                 
-                # Log Event
+                # Calculate delay (time since product creation in XpertPharm)
+                delay = None
+                try:
+                    from datetime import timedelta
+                    
+                    created_on = product_data.get('CREATED_ON')
+                    if created_on:
+                        # Check if Thursday (weekday == 3), add 24h (Friday holiday)
+                        if created_on.weekday() == 3:
+                            adjusted_created_on = created_on + timedelta(hours=24)
+                        else:
+                            adjusted_created_on = created_on
+                        
+                        now = datetime.now()
+                        delay_hours = (now - adjusted_created_on).total_seconds() / 3600
+                        
+                        # Only positive delays
+                        if delay_hours > 0:
+                            delay = delay_hours
+                except Exception as e:
+                    logger.error(f"Failed to calculate delay: {e}")
+                
+                # Log Event with delay
                 from database.connection import log_event
-                log_event('INVENTORY_ADD', details=product_data['CODE_PRODUIT'], source='InventoryWidget')
+                log_event('INVENTORY_ADD', details=product_data['CODE_PRODUIT'], source='InventoryWidget', delay=delay)
                 
                 self.load_products()
                 self.speak("Suivant")

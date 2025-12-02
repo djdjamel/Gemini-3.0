@@ -241,11 +241,13 @@ class StatsWidget(QWidget):
         self.card_saisie_avg = StatCard("Moyenne Saisie/Produit", "0s", "Temps administratif", "#e8f5e9")
         self.card_appro_avg = StatCard("Temps Approvisionnement", "0m", "Clôture -> Validation", "#e3f2fd")
         self.card_products_today = StatCard("Produits Traités", "0", "Entrée Stock Aujourd'hui", "#fff3e0")
+        self.card_delay_avg = StatCard("Délai Moyen Mise en Rayon", "N/A", "Temps avant stockage", "#f3e5f5")
         
         kpi_layout.addWidget(self.card_interventions, 0, 0)
         kpi_layout.addWidget(self.card_saisie_avg, 0, 1)
         kpi_layout.addWidget(self.card_appro_avg, 0, 2)
-        kpi_layout.addWidget(self.card_products_today, 0, 3)
+        kpi_layout.addWidget(self.card_products_today, 1, 0)
+        kpi_layout.addWidget(self.card_delay_avg, 1, 1)
         
         kpi_group.setLayout(kpi_layout)
         self.content_layout.addWidget(kpi_group)
@@ -429,6 +431,24 @@ class StatsWidget(QWidget):
                 EventLog.timestamp >= today_start
             ).count()
             self.card_products_today.set_value(products_added)
+            
+            # 5. Délai Moyen Mise en Rayon (INVENTORY_ADD with delay today)
+            avg_delay = db.query(func.avg(EventLog.delay)).filter(
+                EventLog.event_type == 'INVENTORY_ADD',
+                EventLog.timestamp >= today_start,
+                EventLog.delay != None
+            ).scalar()
+            
+            if avg_delay and avg_delay > 0:
+                # Format: show hours if < 24, else show days
+                if avg_delay < 24:
+                    self.card_delay_avg.set_value(f"{avg_delay:.1f}h")
+                else:
+                    days = int(avg_delay // 24)
+                    hours = int(avg_delay % 24)
+                    self.card_delay_avg.set_value(f"{days}j {hours}h")
+            else:
+                self.card_delay_avg.set_value("N/A")
             
             # 3. Temps Moyen Saisie/Produit
             # Get LIST_CLOSED events
