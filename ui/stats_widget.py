@@ -1,13 +1,48 @@
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QFrame, QGridLayout, 
-    QScrollArea, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView
+    QScrollArea, QPushButton, QTableWidget, QTableWidgetItem, QHeaderView,
+    QDateEdit, QComboBox, QGroupBox
 )
-from PyQt6.QtCore import Qt, QTimer, QRectF
-from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QBrush
+from PyQt6.QtCore import Qt, QTimer, QRectF, QDate
+from PyQt6.QtGui import QFont, QColor, QPainter, QPen, QBrush, QStandardItemModel, QStandardItem
 from database.connection import get_db
 from database.models import EventLog, MissingItem, SupplyList, SupplyListItem
-from sqlalchemy import func
+from sqlalchemy import func, distinct
 from datetime import datetime, timedelta, date
+
+class CheckableComboBox(QComboBox):
+    def __init__(self):
+        super().__init__()
+        self.view().pressed.connect(self.handle_item_pressed)
+        self.setModel(QStandardItemModel(self))
+        self.view().setModel(self.model())
+        self.setEditable(False)
+
+    def handle_item_pressed(self, index):
+        item = self.model().itemFromIndex(index)
+        if item.checkState() == Qt.CheckState.Checked:
+            item.setCheckState(Qt.CheckState.Unchecked)
+        else:
+            item.setCheckState(Qt.CheckState.Checked)
+        self.update_text()
+
+    def addItem(self, text, data=None):
+        item = QStandardItem(text)
+        item.setFlags(Qt.ItemFlag.ItemIsUserCheckable | Qt.ItemFlag.ItemIsEnabled)
+        item.setData(Qt.CheckState.Unchecked, Qt.ItemDataRole.CheckStateRole)
+        item.setData(data, Qt.ItemDataRole.UserRole)
+        self.model().appendRow(item)
+
+    def update_text(self):
+        pass
+
+    def get_checked_data(self):
+        checked_data = []
+        for i in range(self.model().rowCount()):
+            item = self.model().item(i)
+            if item.checkState() == Qt.CheckState.Checked:
+                checked_data.append(item.data(Qt.ItemDataRole.UserRole))
+        return checked_data
 
 class TimelineWidget(QWidget):
     def __init__(self):
@@ -214,8 +249,61 @@ class StatsWidget(QWidget):
         self.missing_table.setColumnCount(3)
         self.missing_table.setHorizontalHeaderLabels(["Source", "Nombre", "Pourcentage"])
         self.missing_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.missing_table.setMaximumHeight(150)
+        self.missing_table.setMaximumHeight(450)
         self.content_layout.addWidget(self.missing_table)
+        
+        # 4. Activity Report Section
+        report_group = QGroupBox("Rapport d'Activité Détaillé")
+        report_layout = QVBoxLayout()
+        
+        # Filters
+        filters_layout = QHBoxLayout()
+        
+        # Date Range
+        filters_layout.addWidget(QLabel("Du:"))
+        self.date_start = QDateEdit()
+        self.date_start.setCalendarPopup(True)
+        self.date_start.setDate(QDate.currentDate())
+        filters_layout.addWidget(self.date_start)
+        
+        filters_layout.addWidget(QLabel("Au:"))
+        self.date_end = QDateEdit()
+        self.date_end.setCalendarPopup(True)
+        self.date_end.setDate(QDate.currentDate())
+        filters_layout.addWidget(self.date_end)
+        
+        # Event Type
+        filters_layout.addWidget(QLabel("Type:"))
+        self.combo_event_type = CheckableComboBox()
+        filters_layout.addWidget(self.combo_event_type)
+        
+        # Source
+        filters_layout.addWidget(QLabel("Source:"))
+        self.combo_source = CheckableComboBox()
+        filters_layout.addWidget(self.combo_source)
+        
+        # Machine
+        filters_layout.addWidget(QLabel("Machine:"))
+        self.combo_machine = CheckableComboBox()
+        filters_layout.addWidget(self.combo_machine)
+        
+        # Search Button
+        search_btn = QPushButton("Rechercher")
+        search_btn.clicked.connect(self.load_report)
+        filters_layout.addWidget(search_btn)
+        
+        report_layout.addLayout(filters_layout)
+        
+        # Results Table
+        self.report_table = QTableWidget()
+        self.report_table.setColumnCount(4)
+        self.report_table.setHorizontalHeaderLabels(["Type d'événement", "Source", "Machine", "Nombre"])
+        self.report_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.report_table.setMinimumHeight(200)
+        report_layout.addWidget(self.report_table)
+        
+        report_group.setLayout(report_layout)
+        self.content_layout.addWidget(report_group)
         
         self.content_layout.addStretch()
         
@@ -223,6 +311,78 @@ class StatsWidget(QWidget):
         main_layout.addWidget(scroll)
         
         self.setLayout(main_layout)
+        
+        # Load initial data for filters
+        QTimer.singleShot(100, self.populate_filters)
+
+    def populate_filters(self):
+        with get_db() as db:
+            if not db: return
+            
+            # Event Types
+            types = db.query(distinct(EventLog.event_type)).all()
+            for t in types:
+                if t[0]: self.combo_event_type.addItem(t[0], t[0])
+                
+            # Sources
+            sources = db.query(distinct(EventLog.source)).all()
+            for s in sources:
+                if s[0]: self.combo_source.addItem(s[0], s[0])
+                
+            # Machines
+            # Check if column exists first (it should now)
+            try:
+                machines = db.query(distinct(EventLog.machine_name)).all()
+                for m in machines:
+                    if m[0]: self.combo_machine.addItem(m[0], m[0])
+            except:
+                pass # Column might not exist yet if migration failed, but we fixed it.
+
+    def load_report(self):
+        start_date = self.date_start.date().toPyDate()
+        end_date = self.date_end.date().toPyDate()
+        # End date should be inclusive, so add 1 day to timestamp check if using < next_day
+        # Or just use date comparison if casting.
+        # Let's use datetime range
+        start_dt = datetime.combine(start_date, datetime.min.time())
+        end_dt = datetime.combine(end_date, datetime.max.time())
+        
+        selected_types = self.combo_event_type.get_checked_data()
+        selected_sources = self.combo_source.get_checked_data()
+        selected_machines = self.combo_machine.get_checked_data()
+        
+        with get_db() as db:
+            if not db: return
+            
+            query = db.query(
+                EventLog.event_type,
+                EventLog.source,
+                EventLog.machine_name,
+                func.count(EventLog.id)
+            ).filter(
+                EventLog.timestamp >= start_dt,
+                EventLog.timestamp <= end_dt
+            )
+            
+            if selected_types:
+                query = query.filter(EventLog.event_type.in_(selected_types))
+            if selected_sources:
+                query = query.filter(EventLog.source.in_(selected_sources))
+            if selected_machines:
+                query = query.filter(EventLog.machine_name.in_(selected_machines))
+                
+            results = query.group_by(
+                EventLog.event_type,
+                EventLog.source,
+                EventLog.machine_name
+            ).all()
+            
+            self.report_table.setRowCount(len(results))
+            for row, (etype, src, mach, count) in enumerate(results):
+                self.report_table.setItem(row, 0, QTableWidgetItem(str(etype)))
+                self.report_table.setItem(row, 1, QTableWidgetItem(str(src)))
+                self.report_table.setItem(row, 2, QTableWidgetItem(str(mach or "N/A")))
+                self.report_table.setItem(row, 3, QTableWidgetItem(str(count)))
 
     def load_stats(self):
         with get_db() as db:
