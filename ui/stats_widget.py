@@ -9,6 +9,7 @@ from database.connection import get_db
 from database.models import EventLog, MissingItem, SupplyList, SupplyListItem
 from sqlalchemy import func, distinct
 from datetime import datetime, timedelta, date
+from ui.delay_chart_widget import DelayChartWidget
 
 class CheckableComboBox(QComboBox):
     def __init__(self):
@@ -167,9 +168,9 @@ class StatCard(QFrame):
             QFrame {{
                 background-color: {color};
                 border-radius: 10px;
-                border: 1px solid #ccc;
+                border: 1px solid #555;
             }}
-            QLabel {{ border: none; background: transparent; }}
+            QLabel {{ border: none; background: transparent; color: white; }}
         """)
         
         layout = QVBoxLayout()
@@ -178,7 +179,7 @@ class StatCard(QFrame):
         
         title_lbl = QLabel(title)
         title_lbl.setFont(QFont("Arial", 11, QFont.Weight.Bold))
-        title_lbl.setStyleSheet("color: #555;")
+        title_lbl.setStyleSheet("color: white;")
         title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_lbl)
         
@@ -186,6 +187,7 @@ class StatCard(QFrame):
         
         self.value_lbl = QLabel(str(value))
         self.value_lbl.setFont(QFont("Arial", 32, QFont.Weight.Bold))
+        self.value_lbl.setStyleSheet("color: white;")
         self.value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.value_lbl)
         
@@ -194,7 +196,7 @@ class StatCard(QFrame):
         if subtitle:
             sub_lbl = QLabel(subtitle)
             sub_lbl.setFont(QFont("Arial", 9))
-            sub_lbl.setStyleSheet("color: #777;")
+            sub_lbl.setStyleSheet("color: #cccccc;")
             sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             sub_lbl.setWordWrap(True)
             layout.addWidget(sub_lbl)
@@ -233,21 +235,21 @@ class StatsWidget(QWidget):
         
         # 1. KPI Section
         kpi_group = QFrame()
-        kpi_layout = QGridLayout()
+        kpi_layout = QHBoxLayout()
         kpi_layout.setSpacing(15)
         kpi_layout.setContentsMargins(0, 10, 0, 10)
         
-        self.card_interventions = StatCard("Interventions Vendeurs", "0", "Aujourd'hui", "#ffebee")
-        self.card_saisie_avg = StatCard("Moyenne Saisie/Produit", "0s", "Temps administratif", "#e8f5e9")
-        self.card_appro_avg = StatCard("Temps Approvisionnement", "0m", "Clôture -> Validation", "#e3f2fd")
-        self.card_products_today = StatCard("Produits Traités", "0", "Entrée Stock Aujourd'hui", "#fff3e0")
-        self.card_delay_avg = StatCard("Délai Moyen Mise en Rayon", "N/A", "Temps avant stockage", "#f3e5f5")
+        self.card_interventions = StatCard("Interventions Vendeurs", "0", "Aujourd'hui", "#d32f2f")
+        self.card_saisie_avg = StatCard("Moyenne Saisie/Produit", "0s", "Temps administratif", "#388e3c")
+        self.card_appro_avg = StatCard("Temps Approvisionnement", "0m", "Clôture -> Validation", "#1976d2")
+        self.card_products_today = StatCard("Produits Traités", "0", "Entrée Stock Aujourd'hui", "#f57c00")
+        self.card_delay_avg = StatCard("Délai Moyen Mise en Rayon", "N/A", "Temps avant stockage", "#7b1fa2")
         
-        kpi_layout.addWidget(self.card_interventions, 0, 0)
-        kpi_layout.addWidget(self.card_saisie_avg, 0, 1)
-        kpi_layout.addWidget(self.card_appro_avg, 0, 2)
-        kpi_layout.addWidget(self.card_products_today, 1, 0)
-        kpi_layout.addWidget(self.card_delay_avg, 1, 1)
+        kpi_layout.addWidget(self.card_interventions)
+        kpi_layout.addWidget(self.card_saisie_avg)
+        kpi_layout.addWidget(self.card_appro_avg)
+        kpi_layout.addWidget(self.card_products_today)
+        kpi_layout.addWidget(self.card_delay_avg)
         
         kpi_group.setLayout(kpi_layout)
         self.content_layout.addWidget(kpi_group)
@@ -262,6 +264,65 @@ class StatsWidget(QWidget):
         self.timeline = TimelineWidget()
         self.timeline.setMinimumHeight(200)
         self.content_layout.addWidget(self.timeline)
+        self.content_layout.addSpacing(20)
+        
+        # 2b. Delay Evolution Chart with Filters
+        delay_chart_group = QGroupBox("Évolution du Délai de Mise en Rayon")
+        delay_chart_layout = QVBoxLayout()
+        
+        # Date filters
+        filters_delay_layout = QHBoxLayout()
+        filters_delay_layout.addWidget(QLabel("Du:"))
+        self.delay_date_start = QDateEdit()
+        self.delay_date_start.setCalendarPopup(True)
+        self.delay_date_start.setDate(QDate.currentDate().addDays(-6))
+        filters_delay_layout.addWidget(self.delay_date_start)
+        
+        filters_delay_layout.addWidget(QLabel("Au:"))
+        self.delay_date_end = QDateEdit()
+        self.delay_date_end.setCalendarPopup(True)
+        self.delay_date_end.setDate(QDate.currentDate())
+        filters_delay_layout.addWidget(self.delay_date_end)
+        
+        delay_refresh_btn = QPushButton("Actualiser")
+        delay_refresh_btn.clicked.connect(self.update_delay_chart)
+        filters_delay_layout.addWidget(delay_refresh_btn)
+        filters_delay_layout.addStretch()
+        
+        delay_chart_layout.addLayout(filters_delay_layout)
+        
+        # Chart
+        self.delay_chart = DelayChartWidget()
+        self.delay_chart.setMinimumHeight(250)
+        delay_chart_layout.addWidget(self.delay_chart)
+        
+        # Statistics labels below chart
+        stats_delay_layout = QHBoxLayout()
+        
+        # <= 5h
+        self.delay_stat_fast = QLabel("≤ 5h: 0")
+        self.delay_stat_fast.setStyleSheet("background-color: #2e7d32; color: white; padding: 10px 15px; border-radius: 4px; font-weight: bold; font-size: 12pt;")
+        stats_delay_layout.addWidget(self.delay_stat_fast)
+        
+        # 5-24h
+        self.delay_stat_medium = QLabel("5-24h: 0")
+        self.delay_stat_medium.setStyleSheet("background-color: #f57c00; color: white; padding: 10px 15px; border-radius: 4px; font-weight: bold; font-size: 12pt;")
+        stats_delay_layout.addWidget(self.delay_stat_medium)
+        
+        # > 24h
+        self.delay_stat_slow = QLabel("> 24h: 0")
+        self.delay_stat_slow.setStyleSheet("background-color: #c62828; color: white; padding: 10px 15px; border-radius: 4px; font-weight: bold; font-size: 12pt;")
+        stats_delay_layout.addWidget(self.delay_stat_slow)
+        
+        # Max delay
+        self.delay_stat_max = QLabel("Max: 0h")
+        self.delay_stat_max.setStyleSheet("background-color: #6a1b9a; color: white; padding: 10px 15px; border-radius: 4px; font-weight: bold; font-size: 12pt;")
+        stats_delay_layout.addWidget(self.delay_stat_max)
+        
+        delay_chart_layout.addLayout(stats_delay_layout)
+        
+        delay_chart_group.setLayout(delay_chart_layout)
+        self.content_layout.addWidget(delay_chart_group)
         self.content_layout.addSpacing(20)
         
         # 3. Missing Items Source Analysis
@@ -544,6 +605,9 @@ class StatsWidget(QWidget):
                 
             # Update Timeline
             self.timeline.set_events(timeline_events)
+            
+            # 6. Delay Evolution Chart - call dedicated update method
+            self.update_delay_chart()
 
             # 5. Missing Items Source
             # Group by source
@@ -557,3 +621,83 @@ class StatsWidget(QWidget):
                 self.missing_table.setItem(row, 0, QTableWidgetItem(source or "Inconnu"))
                 self.missing_table.setItem(row, 1, QTableWidgetItem(str(count)))
                 self.missing_table.setItem(row, 2, QTableWidgetItem(f"{percentage:.1f}%"))
+
+    def update_delay_chart(self):
+        """Update delay chart data and statistics based on selected date range"""
+        start_date = self.delay_date_start.date().toPyDate()
+        end_date = self.delay_date_end.date().toPyDate()
+        
+        with get_db() as db:
+            if not db: return
+            
+            # Build chart data (daily averages)
+            delay_data = []
+            current_date = start_date
+            while current_date <= end_date:
+                day_start = datetime.combine(current_date, datetime.min.time())
+                day_end = datetime.combine(current_date, datetime.max.time())
+                
+                avg_delay = db.query(func.avg(EventLog.delay)).filter(
+                    EventLog.event_type == 'INVENTORY_ADD',
+                    EventLog.timestamp >= day_start,
+                    EventLog.timestamp <= day_end,
+                    EventLog.delay != None
+                ).scalar()
+                
+                delay_data.append((current_date, avg_delay if avg_delay else None))
+                current_date += timedelta(days=1)
+            
+            self.delay_chart.set_data(delay_data)
+            
+            # Calculate statistics for the entire period
+            period_start = datetime.combine(start_date, datetime.min.time())
+            period_end = datetime.combine(end_date, datetime.max.time())
+            
+            # Count delays in different ranges
+            count_fast = db.query(func.count(EventLog.id)).filter(
+                EventLog.event_type == 'INVENTORY_ADD',
+                EventLog.timestamp >= period_start,
+                EventLog.timestamp <= period_end,
+                EventLog.delay != None,
+                EventLog.delay <= 5
+            ).scalar() or 0
+            
+            count_medium = db.query(func.count(EventLog.id)).filter(
+                EventLog.event_type == 'INVENTORY_ADD',
+                EventLog.timestamp >= period_start,
+                EventLog.timestamp <= period_end,
+                EventLog.delay != None,
+                EventLog.delay > 5,
+                EventLog.delay <= 24
+            ).scalar() or 0
+            
+            count_slow = db.query(func.count(EventLog.id)).filter(
+                EventLog.event_type == 'INVENTORY_ADD',
+                EventLog.timestamp >= period_start,
+                EventLog.timestamp <= period_end,
+                EventLog.delay != None,
+                EventLog.delay > 24
+            ).scalar() or 0
+            
+            # Max delay
+            max_delay = db.query(func.max(EventLog.delay)).filter(
+                EventLog.event_type == 'INVENTORY_ADD',
+                EventLog.timestamp >= period_start,
+                EventLog.timestamp <= period_end,
+                EventLog.delay != None
+            ).scalar()
+            
+            # Update labels
+            self.delay_stat_fast.setText(f"≤ 5h: {count_fast}")
+            self.delay_stat_medium.setText(f"5-24h: {count_medium}")
+            self.delay_stat_slow.setText(f"> 24h: {count_slow}")
+            
+            if max_delay:
+                if max_delay < 24:
+                    self.delay_stat_max.setText(f"Max: {max_delay:.1f}h")
+                else:
+                    days = int(max_delay // 24)
+                    hours = int(max_delay % 24)
+                    self.delay_stat_max.setText(f"Max: {days}j {hours}h")
+            else:
+                self.delay_stat_max.setText("Max: N/A")
