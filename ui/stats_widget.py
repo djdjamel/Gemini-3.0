@@ -173,25 +173,35 @@ class StatCard(QFrame):
         """)
         
         layout = QVBoxLayout()
+        layout.setContentsMargins(15, 15, 15, 15)
+        layout.setSpacing(10)
         
         title_lbl = QLabel(title)
-        title_lbl.setFont(QFont("Arial", 10, QFont.Weight.Bold))
+        title_lbl.setFont(QFont("Arial", 11, QFont.Weight.Bold))
         title_lbl.setStyleSheet("color: #555;")
+        title_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(title_lbl)
         
+        layout.addSpacing(5)
+        
         self.value_lbl = QLabel(str(value))
-        self.value_lbl.setFont(QFont("Arial", 24, QFont.Weight.Bold))
+        self.value_lbl.setFont(QFont("Arial", 32, QFont.Weight.Bold))
         self.value_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
         layout.addWidget(self.value_lbl)
+        
+        layout.addSpacing(5)
         
         if subtitle:
             sub_lbl = QLabel(subtitle)
             sub_lbl.setFont(QFont("Arial", 9))
             sub_lbl.setStyleSheet("color: #777;")
             sub_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+            sub_lbl.setWordWrap(True)
             layout.addWidget(sub_lbl)
-            
+        
+        layout.addStretch()
         self.setLayout(layout)
+        self.setMinimumHeight(140)
 
     def set_value(self, value):
         self.value_lbl.setText(str(value))
@@ -224,8 +234,10 @@ class StatsWidget(QWidget):
         # 1. KPI Section
         kpi_group = QFrame()
         kpi_layout = QGridLayout()
+        kpi_layout.setSpacing(15)
+        kpi_layout.setContentsMargins(0, 10, 0, 10)
         
-        self.card_interventions = StatCard("Interventions Vendeurs", "0", "Aujourd'hui", "#ffebee") # Red tint for 'bad'
+        self.card_interventions = StatCard("Interventions Vendeurs", "0", "Aujourd'hui", "#ffebee")
         self.card_saisie_avg = StatCard("Moyenne Saisie/Produit", "0s", "Temps administratif", "#e8f5e9")
         self.card_appro_avg = StatCard("Temps Approvisionnement", "0m", "Clôture -> Validation", "#e3f2fd")
         self.card_products_today = StatCard("Produits Traités", "0", "Entrée Stock Aujourd'hui", "#fff3e0")
@@ -237,20 +249,33 @@ class StatsWidget(QWidget):
         
         kpi_group.setLayout(kpi_layout)
         self.content_layout.addWidget(kpi_group)
+        self.content_layout.addSpacing(20)
         
         # 2. Timeline Section
-        self.content_layout.addWidget(QLabel("Chronologie de l'activité (Aujourd'hui):"))
+        timeline_label = QLabel("Chronologie de l'activité (Aujourd'hui):")
+        timeline_label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        timeline_label.setStyleSheet("margin-top: 10px; margin-bottom: 5px;")
+        self.content_layout.addWidget(timeline_label)
+        
         self.timeline = TimelineWidget()
+        self.timeline.setMinimumHeight(200)
         self.content_layout.addWidget(self.timeline)
+        self.content_layout.addSpacing(20)
         
         # 3. Missing Items Source Analysis
-        self.content_layout.addWidget(QLabel("Analyse des Manquants (30 derniers jours):"))
+        missing_label = QLabel("Analyse des Manquants (30 derniers jours):")
+        missing_label.setFont(QFont("Arial", 11, QFont.Weight.Bold))
+        missing_label.setStyleSheet("margin-top: 10px; margin-bottom: 5px;")
+        self.content_layout.addWidget(missing_label)
+        
         self.missing_table = QTableWidget()
         self.missing_table.setColumnCount(3)
         self.missing_table.setHorizontalHeaderLabels(["Source", "Nombre", "Pourcentage"])
         self.missing_table.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.missing_table.setMaximumHeight(450)
+        self.missing_table.setMinimumHeight(150)
+        self.missing_table.setMaximumHeight(300)
         self.content_layout.addWidget(self.missing_table)
+        self.content_layout.addSpacing(20)
         
         # 4. Activity Report Section
         report_group = QGroupBox("Rapport d'Activité Détaillé")
