@@ -34,9 +34,10 @@ class MainWindow(QMainWindow):
         self.toggle_search_action.triggered.connect(self.toggle_floating_search)
         self.addAction(self.toggle_search_action)
         
-        # Track protected tabs and last tab
+        # Track protected tabs and authentication
         self.protected_tabs = []  # Will store indices of protected tabs
         self.last_tab_index = 0
+        self.authenticating = False  # Flag to prevent recursion
         self.tabs.currentChanged.connect(self.on_tab_changed)
         
         # Initialize Tabs synchronously
@@ -214,8 +215,14 @@ class MainWindow(QMainWindow):
     
     def on_tab_changed(self, index):
         """Handle tab changes and verify password for protected tabs"""
+        # Prevent recursion during authentication
+        if self.authenticating:
+            return
+            
         # If switching to a protected tab
         if index in self.protected_tabs:
+            self.authenticating = True
+            
             # Get current time for password
             from datetime import datetime
             current_time = datetime.now()
@@ -233,19 +240,14 @@ class MainWindow(QMainWindow):
             if ok and password == correct_password:
                 # Password correct, allow access
                 self.last_tab_index = index
+                self.authenticating = False
             else:
-                # Password incorrect or cancelled, return to last tab
-                if not ok:
-                    # User cancelled
-                    self.tabs.blockSignals(True)
-                    self.tabs.setCurrentIndex(self.last_tab_index)
-                    self.tabs.blockSignals(False)
-                else:
-                    # Wrong password
+                # Password incorrect or cancelled, go back to last tab
+                self.tabs.setCurrentIndex(self.last_tab_index)
+                self.authenticating = False
+                
+                if ok:  # Only show warning if password was entered (not cancelled)
                     QMessageBox.warning(self, "Accès Refusé", "Mot de passe incorrect.")
-                    self.tabs.blockSignals(True)
-                    self.tabs.setCurrentIndex(self.last_tab_index)
-                    self.tabs.blockSignals(False)
         else:
             # Not a protected tab, just update last tab
             self.last_tab_index = index
