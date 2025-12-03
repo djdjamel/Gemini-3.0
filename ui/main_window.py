@@ -34,6 +34,11 @@ class MainWindow(QMainWindow):
         self.toggle_search_action.triggered.connect(self.toggle_floating_search)
         self.addAction(self.toggle_search_action)
         
+        # Track protected tabs and last tab
+        self.protected_tabs = []  # Will store indices of protected tabs
+        self.last_tab_index = 0
+        self.tabs.currentChanged.connect(self.on_tab_changed)
+        
         # Initialize Tabs synchronously
         self.create_tabs(splash)
 
@@ -135,6 +140,12 @@ class MainWindow(QMainWindow):
         from ui.messages_widget import MessagesWidget
         self.messages_tab = MessagesWidget()
         self.tabs.addTab(self.messages_tab, "Messages")
+        
+        # Mark protected tabs (Statistiques, Rotation, Paramètres)
+        for i in range(self.tabs.count()):
+            tab_name = self.tabs.tabText(i)
+            if tab_name in ["Statistiques", "Rotation", "Paramètres"]:
+                self.protected_tabs.append(i)
 
     def check_notifications(self):
         try:
@@ -200,6 +211,44 @@ class MainWindow(QMainWindow):
                         db.commit()
         except Exception as e:
             logging.error(f"Error updating notification: {e}")
+    
+    def on_tab_changed(self, index):
+        """Handle tab changes and verify password for protected tabs"""
+        # If switching to a protected tab
+        if index in self.protected_tabs:
+            # Get current time for password
+            from datetime import datetime
+            current_time = datetime.now()
+            correct_password = current_time.strftime("%H%M")
+            
+            # Show password dialog
+            from PyQt6.QtWidgets import QInputDialog, QLineEdit
+            password, ok = QInputDialog.getText(
+                self, 
+                "Accès Protégé", 
+                f"Entrez le mot de passe pour accéder à '{self.tabs.tabText(index)}':",
+                echo=QLineEdit.EchoMode.Password
+            )
+            
+            if ok and password == correct_password:
+                # Password correct, allow access
+                self.last_tab_index = index
+            else:
+                # Password incorrect or cancelled, return to last tab
+                if not ok:
+                    # User cancelled
+                    self.tabs.blockSignals(True)
+                    self.tabs.setCurrentIndex(self.last_tab_index)
+                    self.tabs.blockSignals(False)
+                else:
+                    # Wrong password
+                    QMessageBox.warning(self, "Accès Refusé", "Mot de passe incorrect.")
+                    self.tabs.blockSignals(True)
+                    self.tabs.setCurrentIndex(self.last_tab_index)
+                    self.tabs.blockSignals(False)
+        else:
+            # Not a protected tab, just update last tab
+            self.last_tab_index = index
 
     def toggle_floating_search(self):
         if self.floating_search.isVisible():
