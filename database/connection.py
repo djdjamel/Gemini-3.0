@@ -23,9 +23,8 @@ def init_db():
         Base.metadata.create_all(bind=pg_engine)
         logger.info("PostgreSQL tables created.")
         
-        # Populate locations if empty
-        from populate_locations import populate_locations
-        populate_locations()
+        # Auto-import locations if empty and Excel file exists
+        auto_import_locations()
 
 from contextlib import contextmanager
 
@@ -39,6 +38,62 @@ def get_db():
         yield db
     finally:
         db.close()
+
+def auto_import_locations():
+    """
+    Automatically import locations from Excel file if:
+    1. The locations table is empty
+    2. The file 'emplacements_a_importer.xlsx' exists
+    """
+    import os
+    import pandas as pd
+    from .models import Location
+    
+    excel_file = 'emplacements_a_importer.xlsx'
+    
+    # Check if file exists
+    if not os.path.exists(excel_file):
+        logger.info(f"Auto-import: File '{excel_file}' not found. Skipping auto-import.")
+        return
+    
+    try:
+        with get_db() as db:
+            if not db:
+                return
+            
+            # Check if locations table is empty
+            location_count = db.query(Location).count()
+            if location_count > 0:
+                logger.info(f"Auto-import: Locations table already contains {location_count} locations. Skipping auto-import.")
+                return
+            
+            # Read Excel file
+            logger.info(f"Auto-import: Reading locations from '{excel_file}'...")
+            df = pd.read_excel(excel_file)
+            
+            # Validate columns
+            if 'label' not in df.columns or 'barcode' not in df.columns:
+                logger.error("Auto-import: Excel file must contain 'label' and 'barcode' columns.")
+                return
+            
+            # Import locations
+            imported_count = 0
+            for _, row in df.iterrows():
+                label = str(row['label']).strip()
+                barcode = str(row['barcode']).strip() if pd.notna(row['barcode']) else ''
+                
+                if label:  # Only import if label is not empty
+                    location = Location(label=label, barcode=barcode)
+                    db.add(location)
+                    imported_count += 1
+            
+            db.commit()
+            logger.info(f"✅ Auto-import: Successfully imported {imported_count} locations from '{excel_file}'")
+            print(f"Successfully added {imported_count} locations.")
+            
+    except Exception as e:
+        logger.error(f"Auto-import error: {e}")
+        print(f"Auto-import failed: {e}")
 
 def log_event(event_type, details=None, source=None, delay=None):
     """Helper to log events to the database"""

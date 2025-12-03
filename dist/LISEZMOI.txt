@@ -1,0 +1,34 @@
+# INSTRUCTIONS RAPIDES - Gravity Stock Manager
+
+## ✅ Fichiers Inclus
+- `GravityStockManager.exe` - Application principale
+- `config.py` - Configuration (À MODIFIER AVANT LE PREMIER LANCEMENT)
+- `README.md` - Guide complet d'installation
+
+## 🚀 Démarrage Rapide
+
+### 1. IMPORTANT : Modifier `config.py`
+Ouvrir `config.py` avec un éditeur de texte et modifier :
+- Paramètres PostgreSQL (DB_HOST, DB_USER, DB_PASSWORD, etc.)
+- Paramètres XpertPharm (XPERTPHARM_SERVER, etc.)
+
+### 2. Lancer l'Application
+Double-cliquer sur `GravityStockManager.exe`
+
+### 3. Mot de Passe pour Onglets Protégés
+Pour accéder à "Statistiques", "Rotation" et "Paramètres" :
+- Mot de passe = Heure actuelle (ex: 14:35 → 1435)
+
+## 📖 Documentation Complète
+Consulter `README.md` pour :
+- Configuration détaillée PostgreSQL
+- Dépannage
+- Fonctionnalités avancées
+
+## ⚠️ Attention
+- PostgreSQL DOIT être installé et configuré
+- Modifier `config.py` AVANT le premier lancement
+- Conserver les fichiers de configuration lors des mises à jour
+
+---
+Support : Consulter README.md
