@@ -19,12 +19,37 @@ except Exception as e:
     SessionLocal = None
 
 def init_db():
-    if pg_engine:
+    """Initialize database - only create tables if in server mode"""
+    if not pg_engine:
+        return
+    
+    # Check server mode
+    from server_config import is_server_mode
+    server_mode = is_server_mode()
+    
+    if server_mode is None:
+        # First run - will be configured in main.py
+        logger.info("Server mode not configured yet. Skipping database initialization.")
+        return
+    
+    if server_mode:
+        # SERVER MODE: Create tables and import locations
+        logger.info("🖥️ SERVER MODE: Creating database tables...")
         Base.metadata.create_all(bind=pg_engine)
         logger.info("PostgreSQL tables created.")
         
         # Auto-import locations if empty and Excel file exists
         auto_import_locations()
+    else:
+        # CLIENT MODE: Just verify connection, don't create tables
+        logger.info("💻 CLIENT MODE: Connecting to existing database...")
+        try:
+            # Test connection
+            with get_db() as db:
+                if db:
+                    logger.info("Successfully connected to database.")
+        except Exception as e:
+            logger.error(f"Failed to connect to database: {e}")
 
 from contextlib import contextmanager
 

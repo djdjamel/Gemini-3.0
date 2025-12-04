@@ -1,0 +1,109 @@
+LIENS DE TÉLÉCHARGEMENT - Dépendances Gravity Stock Manager
+================================================================
+
+⚠️ IMPORTANT: Installation requise AVANT le premier lancement de Gravity
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. PostgreSQL 14+ (PC SERVEUR UNIQUEMENT)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   📥 Télécharger:
+   https://www.postgresql.org/download/windows/
+   
+   📦 Taille: ~200 MB
+   ⏱️ Installation: ~10 minutes
+   
+   ⚙️ Configuration:
+   - Installer avec les options par défaut
+   - Port: 5432
+   - Créer un mot de passe pour postgres
+   - Cocher "pgAdmin 4" et "Stack Builder"
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+2. ODBC Driver 17 for SQL Server (TOUS LES PC)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   📥 Télécharger:
+   https://learn.microsoft.com/en-us/sql/connect/odbc/download-odbc-driver-for-sql-server
+   
+   OU lien direct:
+   https://go.microsoft.com/fwlink/?linkid=2249006
+   
+   📦 Taille: ~15 MB
+   ⏱️ Installation: ~2 minutes
+   
+   ℹ️ Nécessaire pour la connexion XpertPharm (SQL Server)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+3. Brother QL-820NWB Driver (OPTIONNEL)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   📥 Site officiel Brother:
+   https://support.brother.com
+   
+   Rechercher: "QL-820NWB"
+   Sélectionner: Windows 10/11 (64-bit)
+   
+   📦 Taille: ~50 MB
+   ⏱️ Installation: ~5 minutes
+   
+   ℹ️ Nécessaire uniquement si vous utilisez l'imprimante Brother
+   ℹ️ L'application fonctionne sans imprimante
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+4. Visual C++ Redistributable 2015-2022 (SI NÉCESSAIRE)
+   ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+   📥 Télécharger (x64):
+   https://aka.ms/vs/17/release/vc_redist.x64.exe
+   
+   📦 Taille: ~25 MB
+   ⏱️ Installation: ~2 minutes
+   
+   ℹ️ Généralement déjà installé sur Windows 10/11
+   ℹ️ Installer seulement si l'application ne démarre pas
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+RÉSUMÉ DE L'INSTALLATION
+━━━━━━━━━━━━━━━━━━━━━━━
+
+PC SERVEUR (Principal):
+  ✅ PostgreSQL 14+
+  ✅ ODBC Driver 17
+  ⭕ Brother Driver (si imprimante)
+
+PC CLIENT (Secondaires):
+  ✅ ODBC Driver 17
+  ⭕ Brother Driver (si imprimante)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+ORDRE D'INSTALLATION RECOMMANDÉ
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+1. Installer les dépendances (ci-dessus)
+2. Extraire le ZIP Gravity
+3. Modifier config.py
+4. Lancer GravityStockManager.exe
+5. Configurer en mode Serveur ou Client
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VÉRIFICATION
+━━━━━━━━━━━━
+
+Double-cliquer sur: test_dependencies.bat
+Ce script vérifiera automatiquement toutes les dépendances.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+SUPPORT
+━━━━━━━
+
+Pour toute question, consulter:
+- README.md (Guide d'installation complet)
+- DEPENDENCIES.md (Documentation technique)
+- SERVER_CLIENT_MODE.md (Configuration multi-postes)
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━

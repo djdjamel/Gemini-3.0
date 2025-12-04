@@ -3879,6 +3879,7 @@ imported by:
  &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
  &#8226;   <a href="#database.cache">database.cache</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#server_config">server_config</a>
  &#8226;   <a href="#ui.delay_chart_widget">ui.delay_chart_widget</a>
  &#8226;   <a href="#ui.dormant_widget">ui.dormant_widget</a>
  &#8226;   <a href="#ui.entry_widget">ui.entry_widget</a>
@@ -3992,6 +3993,7 @@ imports:
 imported by:
     <a href="#PyQt6.QtPrintSupport">PyQt6.QtPrintSupport</a>
  &#8226;   <a href="#main.py">main.py</a>
+ &#8226;   <a href="#server_config">server_config</a>
  &#8226;   <a href="#ui.delay_chart_widget">ui.delay_chart_widget</a>
  &#8226;   <a href="#ui.dialogs">ui.dialogs</a>
  &#8226;   <a href="#ui.dormant_widget">ui.dormant_widget</a>
@@ -12873,8 +12875,10 @@ imports:
  &#8226;   <a href="#database">database</a>
  &#8226;   <a href="#database.models">database.models</a>
  &#8226;   <a href="#logging">logging</a>
- &#8226;   <a href="#populate_locations">populate_locations</a>
+ &#8226;   <a href="#os">os</a>
+ &#8226;   <a href="#pandas">pandas</a>
  &#8226;   <a href="#pyodbc">pyodbc</a>
+ &#8226;   <a href="#server_config">server_config</a>
  &#8226;   <a href="#socket">socket</a>
  &#8226;   <a href="#sqlalchemy">sqlalchemy</a>
  &#8226;   <a href="#sqlalchemy.orm">sqlalchemy.orm</a>
@@ -12884,7 +12888,6 @@ imports:
 imported by:
     <a href="#database.cache">database.cache</a>
  &#8226;   <a href="#main.py">main.py</a>
- &#8226;   <a href="#populate_locations">populate_locations</a>
  &#8226;   <a href="#ui.dialogs">ui.dialogs</a>
  &#8226;   <a href="#ui.dormant_widget">ui.dormant_widget</a>
  &#8226;   <a href="#ui.entry_widget">ui.entry_widget</a>
@@ -12921,7 +12924,6 @@ imports:
   <div class="import">
 imported by:
     <a href="#database.connection">database.connection</a>
- &#8226;   <a href="#populate_locations">populate_locations</a>
  &#8226;   <a href="#ui.dialogs">ui.dialogs</a>
  &#8226;   <a href="#ui.dormant_widget">ui.dormant_widget</a>
  &#8226;   <a href="#ui.entry_widget">ui.entry_widget</a>
@@ -21543,6 +21545,7 @@ imported by:
  &#8226;   <a href="#pandas.util._print_versions">pandas.util._print_versions</a>
  &#8226;   <a href="#psycopg2._json">psycopg2._json</a>
  &#8226;   <a href="#requests.compat">requests.compat</a>
+ &#8226;   <a href="#server_config">server_config</a>
  &#8226;   <a href="#setuptools.msvc">setuptools.msvc</a>
  &#8226;   <a href="#sqlalchemy.dialects.postgresql.asyncpg">sqlalchemy.dialects.postgresql.asyncpg</a>
  &#8226;   <a href="#sqlalchemy.sql.sqltypes">sqlalchemy.sql.sqltypes</a>
@@ -35831,6 +35834,7 @@ imported by:
  &#8226;   <a href="#ctypes._aix">ctypes._aix</a>
  &#8226;   <a href="#ctypes.macholib.dyld">ctypes.macholib.dyld</a>
  &#8226;   <a href="#ctypes.util">ctypes.util</a>
+ &#8226;   <a href="#database.connection">database.connection</a>
  &#8226;   <a href="#dateutil.tz.tz">dateutil.tz.tz</a>
  &#8226;   <a href="#distutils._msvccompiler">distutils._msvccompiler</a>
  &#8226;   <a href="#distutils.archive_util">distutils.archive_util</a>
@@ -36018,6 +36022,7 @@ imported by:
  &#8226;   <a href="#rsa.pkcs1">rsa.pkcs1</a>
  &#8226;   <a href="#rsa.randnum">rsa.randnum</a>
  &#8226;   <a href="#runpy">runpy</a>
+ &#8226;   <a href="#server_config">server_config</a>
  &#8226;   <a href="#setuptools">setuptools</a>
  &#8226;   <a href="#setuptools._imp">setuptools._imp</a>
  &#8226;   <a href="#setuptools._vendor.packaging.markers">setuptools._vendor.packaging.markers</a>
@@ -36599,6 +36604,7 @@ imports:
   <div class="import">
 imported by:
     <a href="#database.cache">database.cache</a>
+ &#8226;   <a href="#database.connection">database.connection</a>
  &#8226;   <a href="#main.py">main.py</a>
  &#8226;   <a href="#pandas">pandas</a>
  &#8226;   <a href="#pandas._config">pandas._config</a>
@@ -49739,24 +49745,6 @@ imported by:
 </div>
 
 <div class="node">
-  <a name="populate_locations"></a>
-  <a target="code" href="///C:/Users/acer/Documents/Gravity/populate_locations.py" type="text/plain"><tt>populate_locations</tt></a>
-<span class="moduletype">SourceModule</span>  <div class="import">
-imports:
-    <a href="#database.connection">database.connection</a>
- &#8226;   <a href="#database.models">database.models</a>
- &#8226;   <a href="#utils.barcode_utils">utils.barcode_utils</a>
-
-  </div>
-  <div class="import">
-imported by:
-    <a href="#database.connection">database.connection</a>
-
-  </div>
-
-</div>
-
-<div class="node">
   <a name="posix"></a>
   <a target="code" href="" type="text/plain"><tt>posix</tt></a>
 <span class="moduletype">MissingModule</span>  <div class="import">
@@ -56220,6 +56208,25 @@ imported by:
  &#8226;   <a href="#socket">socket</a>
  &#8226;   <a href="#socketserver">socketserver</a>
  &#8226;   <a href="#subprocess">subprocess</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="server_config"></a>
+  <a target="code" href="///C:/Users/acer/Documents/Gravity/server_config.py" type="text/plain"><tt>server_config</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PyQt6.QtCore">PyQt6.QtCore</a>
+ &#8226;   <a href="#PyQt6.QtWidgets">PyQt6.QtWidgets</a>
+ &#8226;   <a href="#json">json</a>
+ &#8226;   <a href="#os">os</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#database.connection">database.connection</a>
 
   </div>
 
@@ -70228,8 +70235,7 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#populate_locations">populate_locations</a>
- &#8226;   <a href="#ui.inventory_widget">ui.inventory_widget</a>
+    <a href="#ui.inventory_widget">ui.inventory_widget</a>
 
   </div>
 

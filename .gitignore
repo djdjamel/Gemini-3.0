@@ -3,3 +3,8 @@ __pycache__/
 .env
 .vscode/
 ~$*.xlsx
+server_config.json
+gravity.lock
+build/
+dist/
+*.spec

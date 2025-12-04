@@ -65,6 +65,23 @@ def main():
     splash.show()
     app.processEvents() # Force update
 
+    # Check Server Mode Configuration (First Run)
+    from server_config import is_server_mode, ask_server_mode
+    if is_server_mode() is None:
+        # First run - ask user to configure server/client mode
+        splash.showMessage("Configuration initiale...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.black)
+        app.processEvents()
+        
+        # Show configuration dialog
+        is_server = ask_server_mode()
+        
+        if is_server:
+            splash.showMessage("Mode SERVEUR configuré. Initialisation de la base de données...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.black)
+        else:
+            splash.showMessage("Mode CLIENT configuré. Connexion à la base de données...", Qt.AlignmentFlag.AlignBottom | Qt.AlignmentFlag.AlignCenter, Qt.GlobalColor.black)
+        
+        app.processEvents()
+
     # Initialize Database
     logger.info("Initializing database...")
     init_db()
